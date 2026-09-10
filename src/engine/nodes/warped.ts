@@ -171,7 +171,7 @@ class ContoursNode implements NodeInstance {
 
 registerNode({
   type: 'marble',
-  version: 1,
+  version: 2,
   label: 'Marble',
   summary: 'Bands folded by noise: marble, oil, watered silk.',
   category: 'generator',
@@ -193,7 +193,7 @@ registerNode({
 
 registerNode({
   type: 'wood-grain',
-  version: 1,
+  version: 2,
   label: 'Wood Grain',
   summary: 'Hard rings with soft gaps, drifting along the plank.',
   category: 'generator',
@@ -215,7 +215,7 @@ registerNode({
 
 registerNode({
   type: 'contours',
-  version: 1,
+  version: 2,
   label: 'Contours',
   summary: 'Iso-lines through a noise field, with heavier lines at an interval.',
   category: 'generator',

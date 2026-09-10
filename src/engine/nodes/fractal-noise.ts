@@ -36,7 +36,7 @@ class FractalNoiseNode implements NodeInstance {
 
 registerNode({
   type: 'fractal-noise',
-  version: 1,
+  version: 2,
   label: 'Fractal Noise',
   summary: 'Mottling for paper and irregular patches for distress. Tileable at any size.',
   category: 'generator',

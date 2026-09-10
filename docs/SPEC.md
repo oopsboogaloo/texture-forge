@@ -1,6 +1,6 @@
 # Procedural Texture Editor — V1 Specification
 
-Version 1.5. Amends the original V1 spec with decisions taken during review and
+Version 1.6. Amends the original V1 spec with decisions taken during review and
 during implementation; changes are listed under [Amendments](#amendments).
 
 ## Purpose
@@ -252,3 +252,10 @@ Further changes, after the first round of use:
 | Choosing a generator | a list of names | a gallery of samples, rendered by the engine when shown so they cannot fall out of step with what the generator makes |
 | Presets | title and description | the same, with a sample of the result |
 | Seamless advice | grid only, hard-coded | each node declares its own tiling period, so the advice covers every generator; a layer whose generator cannot wrap says so rather than letting a seam appear at export |
+
+And again, on request:
+
+| Area | Before | Now |
+| ---- | ------ | --- |
+| Generators | fifteen | twenty-two. Gravel, Torn Edges, Burns, Starfield, Nebula, Hatching and Maze. Scratches, torn edges, burns, stone and splatter were all listed as later additions; the rest follow the same principle of generators that do something layering cannot. |
+| Noise | smooth only | optionally folded about the midline, which is what turns cloud into filament |

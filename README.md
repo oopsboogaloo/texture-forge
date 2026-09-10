@@ -15,7 +15,11 @@ at full size, with the interface staying responsive throughout. The rendering
 architecture is settled on the back of that.
 
 **Stage 2 — the engine: done.** Four generators, five adjustments, three
-presets, a project format, and a command-line renderer. No editor UI yet.
+presets, a project format, and a command-line renderer.
+
+**Stage 3 — the editor: done.** Preset picker, layer stack, live preview with a
+transparency checkerboard and 1:1 inspection, export with progress and cancel,
+undo/redo, save and reopen, and local recovery.
 
 ## The probe
 
@@ -66,6 +70,28 @@ Measured under Node on an x86 container, same code path, band height 128:
 
 Safari will be slower and the Blob has to survive being handed to a download, so
 these are a floor rather than a prediction.
+
+## The editor
+
+The opening screen offers the three presets. Choosing one opens a preview and a
+stack of layers, each a generator with its own controls, a blend mode, an
+opacity and an optional mask that decides where it shows. Layers can be added,
+reordered and deleted; every control is built from the node registry, so a new
+generator gets a working panel the moment it declares its parameters.
+
+Composition in V1 is a stack rather than the node view the original spec called
+for. The saved project is still a graph — the stack is a reading of it — so the
+node view can be added later without a format change. The stack expresses all
+three presets, and it is a great deal less to get wrong on a touch screen.
+
+Two things the interface is careful about, both of which took a bug to learn:
+
+- **Controls are not rebuilt while they are in use.** Replacing a slider mid-drag
+  ends the drag, and replacing a text field discards what has been typed into it
+  but not yet confirmed. Repaints wait for the gesture to finish.
+- **No handler holds onto the project it was built from.** A captured copy goes
+  stale as soon as anything else changes, and writing it back silently reverts
+  that change — which is how editing the height used to reset the width.
 
 ## The engine
 

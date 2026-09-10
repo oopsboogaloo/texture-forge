@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Texture Forge — export feasibility probe</title>
+    <link rel="icon" href="data:," />
+  </head>
+  <body>
+    <main>
+      <h1>Export feasibility probe</h1>
+      <p class="sub"><a href="./">Back to the editor</a></p>
+      <p class="sub">
+        Renders a texture in horizontal bands and streams it into a PNG, without ever
+        allocating a full-size canvas. This measures whether large transparent exports
+        are viable in the browser before the editor is built on top.
+      </p>
+
+      <section class="panel" id="capabilities">
+        <h2>This device</h2>
+        <dl id="caps-list"></dl>
+      </section>
+
+      <section class="panel">
+        <h2>Run</h2>
+        <label for="size">Output size</label>
+        <select id="size">
+          <option value="1024">1,024 × 1,024</option>
+          <option value="2048">2,048 × 2,048</option>
+          <option value="4096">4,096 × 4,096</option>
+          <option value="8192" selected>8,192 × 8,192</option>
+          <option value="10000">10,000 × 10,000</option>
+          <option value="11585">11,585 × 11,585 (Procreate max, M-series)</option>
+        </select>
+
+        <label for="pattern">Pattern</label>
+        <select id="pattern">
+          <option value="grid">Grid — transparent, best case</option>
+          <option value="paper" selected>Paper — fractal noise, representative</option>
+          <option value="static">Static — white noise, worst case</option>
+        </select>
+
+        <label for="band">Band height (scanlines per step)</label>
+        <select id="band">
+          <option value="32">32</option>
+          <option value="128" selected>128</option>
+          <option value="512">512</option>
+          <option value="2048">2,048</option>
+        </select>
+
+        <div class="actions">
+          <button id="start" type="button">Start export</button>
+          <button id="cancel" type="button" disabled>Cancel</button>
+        </div>
+
+        <div class="progress"><div id="bar"></div></div>
+        <p id="status">Idle.</p>
+        <p id="download-slot"></p>
+      </section>
+
+      <section class="panel">
+        <h2>Log</h2>
+        <pre id="log"></pre>
+      </section>
+    </main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

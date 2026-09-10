@@ -69,6 +69,24 @@ export function createRenderPass(project: Project, options: RenderPassOptions = 
   };
 }
 
+/**
+ * The single-channel value a pixel takes under a greyscale output format.
+ *
+ * Shared so the preview cannot show something the export will not produce:
+ * `luminance` reads tone, `alpha` reads coverage.
+ */
+export function greyscaleValue(format: 'luminance' | 'alpha', r: number, g: number, b: number, a: number): number {
+  if (format === 'alpha') return a;
+  // Rec. 709 luminance of the colour composited over white, so an unpainted
+  // area reads as white rather than as black.
+  const alpha = a / 255;
+  return (
+    0.2126 * (r * alpha + 255 * (1 - alpha)) +
+    0.7152 * (g * alpha + 255 * (1 - alpha)) +
+    0.0722 * (b * alpha + 255 * (1 - alpha))
+  );
+}
+
 export interface ExportOptions extends RenderPassOptions {
   /** Scanlines rendered and compressed per step. Bounds peak memory. */
   bandRows?: number;
@@ -106,16 +124,14 @@ export function renderToPng(project: Project, options: ExportOptions = {}): Prom
             buf[target++] = tile.data[source + 1];
             buf[target++] = tile.data[source + 2];
             buf[target++] = tile.data[source + 3];
-          } else if (format === 'alpha') {
-            buf[target++] = tile.data[source + 3];
           } else {
-            // Rec. 709 luminance of the colour composited over white, so an
-            // unpainted area reads as white rather than as black.
-            const a = tile.data[source + 3] / 255;
-            const r = tile.data[source] * a + 255 * (1 - a);
-            const g = tile.data[source + 1] * a + 255 * (1 - a);
-            const b = tile.data[source + 2] * a + 255 * (1 - a);
-            buf[target++] = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+            buf[target++] = greyscaleValue(
+              format,
+              tile.data[source],
+              tile.data[source + 1],
+              tile.data[source + 2],
+              tile.data[source + 3],
+            );
           }
         }
       }

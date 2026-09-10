@@ -1,0 +1,212 @@
+:root {
+  color-scheme: dark;
+  --bg: #14140f;
+  --panel: #1e1e18;
+  --raised: #26261e;
+  --ink: #ece7dc;
+  --muted: #9c968a;
+  --line: #35342c;
+  --accent: #c98b3f;
+  --touch: 44px;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  -webkit-text-size-adjust: 100%;
+  overscroll-behavior: none;
+}
+
+h1 { font-size: 1.5rem; margin: 0 0 4px; }
+h2 { font-size: 0.8rem; margin: 0 0 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.09em; }
+h3 { font-size: 0.75rem; margin: 18px 0 8px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }
+p { margin: 0 0 12px; }
+.sub { color: var(--muted); }
+a { color: var(--accent); }
+
+button {
+  min-height: var(--touch);
+  padding: 0 16px;
+  font: inherit;
+  font-weight: 600;
+  color: var(--ink);
+  background: var(--raised);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  cursor: pointer;
+  /* Nothing here may depend on hover, so state has to be visible at rest. */
+  touch-action: manipulation;
+}
+button:disabled { opacity: 0.3; }
+button.primary { background: var(--accent); border-color: var(--accent); color: #17170f; }
+button.secondary { background: var(--raised); }
+button.small { min-height: 38px; padding: 0 12px; font-size: 0.85rem; font-weight: 500; }
+button.chip { min-height: 38px; padding: 0 14px; border-radius: 999px; font-size: 0.85rem; }
+button.toggle[data-on='true'] { background: var(--accent); border-color: var(--accent); color: #17170f; }
+
+input[type='number'],
+input[type='text'],
+select {
+  width: 100%;
+  min-height: var(--touch);
+  padding: 8px 10px;
+  font: inherit;
+  color: var(--ink);
+  background: var(--raised);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+input[type='range'] {
+  flex: 1;
+  min-width: 0;
+  height: var(--touch);
+  accent-color: var(--accent);
+  background: transparent;
+}
+
+input[type='color'] {
+  width: 56px;
+  height: var(--touch);
+  padding: 2px;
+  background: var(--raised);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+/* ---------------------------------------------------------------- picker */
+
+.picker { max-width: 720px; margin: 0 auto; padding: 24px 16px 48px; }
+.preset-grid { display: grid; gap: 12px; margin: 24px 0; }
+.preset-card {
+  display: block;
+  width: 100%;
+  min-height: 0;
+  padding: 18px;
+  text-align: left;
+  font-weight: 400;
+  border-radius: 14px;
+}
+.preset-card h2 { color: var(--ink); font-size: 1.05rem; text-transform: none; letter-spacing: 0; margin-bottom: 6px; }
+.preset-card p { color: var(--muted); margin: 0; }
+.picker-actions { display: flex; flex-wrap: wrap; gap: 12px; }
+
+/* ---------------------------------------------------------------- editor */
+
+.editor { max-width: 720px; margin: 0 auto; padding: 0 16px 48px; }
+
+.bar {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 10px 0;
+  background: var(--bg);
+  border-bottom: 1px solid var(--line);
+}
+.bar button:last-child { margin-left: auto; }
+
+.stage { padding: 16px 0; }
+
+.preview-frame {
+  display: flex;
+  justify-content: center;
+  padding: 12px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+
+canvas.preview {
+  display: block;
+  /*
+   * Sized from the bitmap and capped, rather than stretched to the frame: the
+   * element then covers exactly the image, so the checkerboard below marks where
+   * the texture is transparent and nowhere else. A tall texture would otherwise
+   * push the controls off the bottom of the screen.
+   */
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: 58vh;
+  image-rendering: pixelated;
+  touch-action: none;
+  /*
+   * Light and low-contrast on purpose: these textures are mostly dark marks on
+   * nothing, so a dark checker hides the grid lines and flecks being judged, and
+   * a fine, strong one competes with them.
+   */
+  background-color: #f4f4f0;
+  background-image:
+    linear-gradient(45deg, #e4e4dd 25%, transparent 25%),
+    linear-gradient(-45deg, #e4e4dd 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #e4e4dd 75%),
+    linear-gradient(-45deg, transparent 75%, #e4e4dd 75%);
+  background-size: 24px 24px;
+  background-position: 0 0, 0 12px, 12px -12px, -12px 0;
+}
+
+.preview-status { margin: 10px 0 0; color: var(--muted); font-size: 0.85rem; }
+.zoom-row { display: flex; gap: 8px; margin-top: 10px; }
+
+.export-bar {
+  padding: 14px;
+  margin-bottom: 16px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+.export-bar p { margin: 0 0 10px; }
+.export-bar button { margin-right: 8px; }
+.progress { height: 8px; margin-bottom: 12px; background: var(--raised); border-radius: 4px; overflow: hidden; }
+.progress-bar { width: 0; height: 100%; background: var(--accent); transition: width 0.12s linear; }
+
+.panels { display: grid; gap: 16px; }
+.panel { padding: 16px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; }
+
+.layer { margin-bottom: 10px; background: var(--raised); border: 1px solid var(--line); border-radius: 10px; }
+.layer-head { display: flex; gap: 6px; align-items: center; padding: 6px; }
+.layer-name { flex: 1; text-align: left; background: transparent; border: 0; min-height: 40px; }
+.layer-body { padding: 4px 14px 16px; border-top: 1px solid var(--line); }
+
+.control { margin-bottom: 14px; }
+.control-label { margin-bottom: 6px; color: var(--muted); font-size: 0.8rem; }
+.slider-row { display: flex; gap: 10px; align-items: center; }
+.slider-row input[type='number'] { width: auto; flex: 1; }
+.readout { min-width: 88px; text-align: right; font-variant-numeric: tabular-nums; font-size: 0.85rem; color: var(--muted); }
+
+.ramp { display: grid; gap: 8px; }
+.ramp-stop { display: flex; gap: 8px; align-items: center; }
+
+.size-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+.notice {
+  padding: 12px;
+  margin-bottom: 14px;
+  background: rgba(201, 139, 63, 0.12);
+  border: 1px solid rgba(201, 139, 63, 0.4);
+  border-radius: 10px;
+  font-size: 0.9rem;
+}
+.notice p { margin: 0 0 10px; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+
+.mask-head { display: flex; gap: 10px; align-items: center; justify-content: space-between; }
+.mask-head h3 { margin-bottom: 8px; }
+
+.add-layer { display: flex; gap: 10px; align-items: center; margin-top: 12px; }
+.add-layer select { flex: 1; }
+
+@media (min-width: 860px) {
+  .editor { max-width: 1100px; display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 20px; align-items: start; }
+  .bar { grid-column: 1 / -1; }
+  .stage { position: sticky; top: 64px; }
+  .export-bar { grid-column: 1 / -1; }
+  .panels { grid-column: 2; }
+}

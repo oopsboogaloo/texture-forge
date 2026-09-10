@@ -21,12 +21,13 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
       - run: npm ci
       - run: npm run build
-      - uses: actions/configure-pages@v5
-        with:
-          enablement: true
+      # No configure-pages step: it needs Pages to already exist, and the
+      # workflow token is not allowed to create it. Pages must be enabled once
+      # by hand under Settings -> Pages, with Source set to GitHub Actions.
+      # The base path is set in vite.config.ts rather than discovered here.
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist

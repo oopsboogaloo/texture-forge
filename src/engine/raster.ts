@@ -87,6 +87,141 @@ export function drawLine(
   }
 }
 
+/**
+ * A stroke's own coverage, kept apart from the page it is laid on.
+ *
+ * Reused between calls rather than allocated per stroke: a page of hatching is
+ * tens of thousands of strokes, and every one of them would otherwise cost a
+ * buffer the width of the image. Always left zeroed for the next caller.
+ */
+let strokeCoverage = new Float32Array(0);
+
+/**
+ * Draws a polyline of varying thickness as a single mark.
+ *
+ * The segments are combined by taking the greater coverage, not by compositing
+ * one after another. Two overlapping half-opaque capsules are more opaque than
+ * either, so a stroke drawn as a run of separate segments darkens at every
+ * joint — which reads as a bead, turning a solid line into a dotted one. Within
+ * one stroke the ink is the same ink; only where two strokes cross does it
+ * build up.
+ *
+ * `points` holds x, y, thickness triples along the centreline.
+ */
+export function drawPath(mask: MaskBuffer, points: ArrayLike<number>, intensity: number): void {
+  const segments = Math.floor(points.length / 3) - 1;
+  if (segments < 1) return;
+  if (strokeCoverage.length < mask.width) strokeCoverage = new Float32Array(mask.width);
+  const coverage = strokeCoverage;
+
+  // Segment bounds, and the order to bring them into play as the sweep descends.
+  const tops = new Float32Array(segments);
+  const bottoms = new Float32Array(segments);
+  const order = new Int32Array(segments);
+  let firstRow = Infinity;
+  let lastRow = -Infinity;
+
+  for (let s = 0; s < segments; s++) {
+    const i = s * 3;
+    const radius = Math.max(points[i + 2], points[i + 5], 1) / 2;
+    const top = Math.min(points[i + 1], points[i + 4]) - radius - 1;
+    const bottom = Math.max(points[i + 1], points[i + 4]) + radius + 1;
+    tops[s] = top;
+    bottoms[s] = bottom;
+    order[s] = s;
+    if (top < firstRow) firstRow = top;
+    if (bottom > lastRow) lastRow = bottom;
+  }
+
+  const rowStart = Math.max(0, Math.floor(firstRow));
+  const rowEnd = Math.min(mask.height - 1, Math.ceil(lastRow));
+  if (rowStart > rowEnd) return;
+
+  const sorted = Array.from(order).sort((a, b) => tops[a] - tops[b]);
+  const active: number[] = [];
+  let next = 0;
+
+  for (let y = rowStart; y <= rowEnd; y++) {
+    const py = y + 0.5;
+    while (next < segments && tops[sorted[next]] <= py) active.push(sorted[next++]);
+    for (let a = active.length - 1; a >= 0; a--) {
+      if (bottoms[active[a]] >= py) continue;
+      active[a] = active[active.length - 1];
+      active.pop();
+    }
+    if (active.length === 0) continue;
+
+    let touchedLeft = mask.width;
+    let touchedRight = -1;
+
+    for (const s of active) {
+      const i = s * 3;
+      const x0 = points[i];
+      const y0 = points[i + 1];
+      const x1 = points[i + 3];
+      const y1 = points[i + 4];
+      const thickness = (points[i + 2] + points[i + 5]) / 2;
+      const effective = Math.max(thickness, 1);
+      const fade = thickness < 1 ? thickness : 1;
+      const radius = effective / 2;
+
+      const dx = x1 - x0;
+      const dy = y1 - y0;
+      const lengthSq = dx * dx + dy * dy;
+      const spanLeft = Math.min(x0, x1) - radius - 1;
+      const spanRight = Math.max(x0, x1) + radius + 1;
+
+      // As in drawLine: a sloped segment reaches radius / sin(angle) sideways
+      // from where its centreline crosses the row, not radius.
+      const sideways =
+        Math.abs(dy) > 1e-6 ? Math.min((radius * Math.sqrt(lengthSq)) / Math.abs(dy), spanRight - spanLeft) + 1 : 0;
+
+      let left = spanLeft;
+      let right = spanRight;
+      if (Math.abs(dy) > 1e-6) {
+        const ta = (py - 0.5 - y0) / dy;
+        const tb = (py + 0.5 - y0) / dy;
+        const clamp = (t: number): number => (t < 0 ? 0 : t > 1 ? 1 : t);
+        const xa = x0 + clamp(ta) * dx;
+        const xb = x0 + clamp(tb) * dx;
+        left = Math.max(left, Math.min(xa, xb) - sideways);
+        right = Math.min(right, Math.max(xa, xb) + sideways);
+      }
+
+      const minX = Math.max(0, Math.floor(left));
+      const maxX = Math.min(mask.width - 1, Math.ceil(right));
+      if (minX > maxX) continue;
+
+      for (let x = minX; x <= maxX; x++) {
+        const px = x + 0.5;
+        let t = lengthSq === 0 ? 0 : ((px - x0) * dx + (py - y0) * dy) / lengthSq;
+        t = t < 0 ? 0 : t > 1 ? 1 : t;
+        const ox = px - (x0 + t * dx);
+        const oy = py - (y0 + t * dy);
+        const distance = Math.sqrt(ox * ox + oy * oy);
+        let value = 1 - (distance - (radius - 0.5));
+        if (value <= 0) continue;
+        if (value > 1) value = 1;
+        value *= fade;
+        if (value > coverage[x]) {
+          coverage[x] = value;
+          if (x < touchedLeft) touchedLeft = x;
+          if (x > touchedRight) touchedRight = x;
+        }
+      }
+    }
+
+    const rowOffset = y * mask.width;
+    for (let x = touchedLeft; x <= touchedRight; x++) {
+      const value = coverage[x];
+      if (value > 0) {
+        addCoverage(mask, rowOffset + x, value, intensity);
+        coverage[x] = 0;
+      }
+    }
+  }
+}
+
 /** Draws a filled ellipse, with the same sub-pixel treatment as drawLine. */
 export function drawEllipse(
   mask: MaskBuffer,

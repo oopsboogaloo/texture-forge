@@ -1,6 +1,6 @@
 # Procedural Texture Editor — V1 Specification
 
-Version 1.7. Amends the original V1 spec with decisions taken during review and
+Version 1.8. Amends the original V1 spec with decisions taken during review and
 during implementation; changes are listed under [Amendments](#amendments).
 
 ## Purpose
@@ -259,6 +259,16 @@ And again, on request:
 | ---- | ------ | --- |
 | Generators | fifteen | twenty-two. Gravel, Torn Edges, Burns, Starfield, Nebula, Hatching and Maze. Scratches, torn edges, burns, stone and splatter were all listed as later additions; the rest follow the same principle of generators that do something layering cannot. |
 | Noise | smooth only | optionally folded about the midline, which is what turns cloud into filament |
+
+And again, after looking at hand-drawn hatching:
+
+| Area | Before | Now |
+| ---- | ------ | --- |
+| Hatching strokes | straight, of one thickness | bowed across their length, swelling and thinning as contact varies, tapered where the hand lands and lifts, and hooked at the end where the wrist turns. Each is a sampled path rather than a segment. |
+| Broken strokes | a gap between strokes | also within one: past a point the pen leaves the paper, driven by the same field that varies the weight, so a stroke thins before it skips |
+| Hatching arrangements | one, two or three crossing families | a fourth: woven blocks, whose strokes turn a right angle from block to block |
+| Rasteriser | line segments only | also paths, whose segments are combined by the greater coverage rather than composited in turn — without which a stroke beads at every joint, and a banded render disagrees with a whole one at every band boundary |
+| Recipes missing a parameter | fail mid-render | filled from the descriptor's default, with a warning, so a recipe saved before a control existed still opens |
 
 The assistant integration, which the original spec put after V1:
 

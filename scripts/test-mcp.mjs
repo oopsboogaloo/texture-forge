@@ -110,8 +110,17 @@ try {
   const fibres = noDensity.nodes.find((node) => node.type === 'paper-fibres');
   delete fibres.params.density;
   const missingParam = await client.callTool({ name: 'validate_recipe', arguments: { recipe: JSON.stringify(noDensity) } });
-  check('a missing parameter is refused', missingParam.isError === true, textOf(missingParam).slice(0, 90));
-  check('the refusal names the parameter', textOf(missingParam).includes('density'), textOf(missingParam).slice(0, 120));
+  check('a missing parameter is filled from the default', missingParam.isError !== true, textOf(missingParam).slice(0, 90));
+  check(
+    'and the substitution is reported rather than made silently',
+    textOf(missingParam).includes('density') && textOf(missingParam).includes('Warning'),
+    textOf(missingParam).slice(0, 140),
+  );
+
+  const mistyped = JSON.parse(recipeText);
+  mistyped.nodes.find((node) => node.type === 'paper-fibres').params.density = 'lots';
+  const wrongKind = await client.callTool({ name: 'validate_recipe', arguments: { recipe: JSON.stringify(mistyped) } });
+  check('a mistyped parameter is still refused', wrongKind.isError === true, textOf(wrongKind).slice(0, 90));
 
   const wildDensity = JSON.parse(recipeText);
   wildDensity.nodes.find((node) => node.type === 'paper-fibres').params.density = 1e9;

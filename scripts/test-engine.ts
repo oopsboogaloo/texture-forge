@@ -21,8 +21,10 @@ import {
 import { createMask, fromStack, toStack } from '../src/editor/stack.ts';
 import { defaultParams, describeNodes, getNodeDefinition, listNodeDefinitions } from '../src/engine/registry.ts';
 import { parseColour } from '../src/engine/colour.ts';
+import { createRandom } from '../src/engine/random.ts';
+import { shapeStroke, type Pen } from '../src/engine/nodes/hatching.ts';
 import { wrapOffsets } from '../src/engine/nodes/scatter.ts';
-import { drawLine } from '../src/engine/raster.ts';
+import { drawLine, drawPath } from '../src/engine/raster.ts';
 import { createColourBuffer, createMaskBuffer } from '../src/engine/types.ts';
 import type { Project } from '../src/engine/project.ts';
 
@@ -67,7 +69,7 @@ function clone<T>(value: T): T {
 }
 
 /** A minimal project exercising one generator, the way a thumbnail shows it. */
-function generatorProject(type: string, seamless: boolean, size = 192, overrides: Record<string, number> = {}): Project {
+function generatorProject(type: string, seamless: boolean, size = 192, overrides: Record<string, string | number> = {}): Project {
   const definition = getNodeDefinition(type);
   const nodes: Project['nodes'] = [
     { id: 'g', type, version: definition.version, params: { ...defaultParams(definition), ...overrides } },
@@ -110,6 +112,15 @@ function generatorProject(type: string, seamless: boolean, size = 192, overrides
 
 function sized(project: Project, size: number, patch: Partial<Project['output']> = {}): Project {
   return { ...project, output: { ...project.output, width: size, height: size, ...patch } };
+}
+
+/** Pixels carrying ink, for a mask generator shown through the test's ramp. */
+function inkOf(pixels: ArrayLike<number>): number {
+  let ink = 0;
+  for (let i = 0; i < pixels.length; i += 4) {
+    if (pixels[i] < 245 || pixels[i + 3] < 250) ink++;
+  }
+  return ink;
 }
 
 function equalBytes(a: ArrayLike<number>, b: ArrayLike<number>): { equal: boolean; at: number } {
@@ -158,11 +169,7 @@ for (const preset of PRESETS) {
     // failure would otherwise only show up as a blank thumbnail. Checked on a
     // canvas large enough for the defaults to mean something: an edge treatment
     // whose depth exceeds half the image has nothing left to leave behind.
-    const pixels = renderWhole(generatorProject(definition.type, false, 512));
-    let ink = 0;
-    for (let i = 0; i < pixels.length; i += 4) {
-      if (pixels[i] < 245 || pixels[i + 3] < 250) ink++;
-    }
+    const ink = inkOf(renderWhole(generatorProject(definition.type, false, 512)));
     check(`${definition.type}: puts marks on the page at its defaults`, ink > 20, `${ink} marked pixels`);
   }
 }
@@ -729,6 +736,161 @@ for (const preset of PRESETS) {
     );
   }
   expectThrows('scaledDimensions rejects a zero scale', () => scaledDimensions(SQUARE_GRID, 0));
+}
+
+// A stroke drawn as a run of segments must read as one mark. Compositing them
+// one after another darkens every joint, because two overlapping half-opaque
+// capsules are more opaque than either — a bead at each joint, which turns a
+// solid line into a dotted one.
+{
+  const mask = createMaskBuffer(64, 256);
+  const points: number[] = [];
+  for (let i = 0; i <= 40; i++) points.push(32, 10 + i * 5.75, 6);
+  drawPath(mask, points, 0.5);
+
+  const rowPeaks: number[] = [];
+  for (let y = 40; y < 200; y++) {
+    let peak = 0;
+    for (let x = 0; x < 64; x++) peak = Math.max(peak, mask.data[y * 64 + x]);
+    rowPeaks.push(peak);
+  }
+  const flat = rowPeaks.every((value) => value === rowPeaks[0]);
+  check('a segmented stroke does not bead at its joints', flat, `peaks ${Math.min(...rowPeaks)}..${Math.max(...rowPeaks)}`);
+  check('and it is drawn at the intensity asked for', rowPeaks[0] === Math.round(0.5 * 255), `${rowPeaks[0]}`);
+
+  // The two rasterisers have to agree, or a stroke would change character the
+  // moment any shaping was switched on.
+  const asPath = createMaskBuffer(64, 256);
+  drawPath(asPath, [32, 20, 6, 32, 200, 6], 0.8);
+  const asLine = createMaskBuffer(64, 256);
+  drawLine(asLine, 32, 20, 32, 200, 6, 0.8);
+  let worst = 0;
+  for (let i = 0; i < asPath.data.length; i++) worst = Math.max(worst, Math.abs(asPath.data[i] - asLine.data[i]));
+  check('drawPath and drawLine agree on a straight stroke', worst === 0, `worst difference ${worst}`);
+}
+
+// The shape of a stroke is a question about the geometry, not the rasteriser.
+{
+  const pen = (overrides: Partial<Pen>): Pen => ({
+    thickness: 4,
+    curve: 0,
+    hook: 0,
+    weightScale: 60,
+    weightAmount: 0,
+    broken: 0,
+    ...overrides,
+  });
+
+  /** Where along the stroke it swings furthest off the straight line. */
+  const peakAt = (path: Float32Array): number => {
+    let at = 0;
+    let most = -1;
+    const count = path.length / 3;
+    for (let i = 0; i < count; i++) {
+      const lateral = Math.abs(path[i * 3 + 1]);
+      if (lateral > most) {
+        most = lateral;
+        at = i / (count - 1);
+      }
+    }
+    return at;
+  };
+
+  let bowedInMiddle = 0;
+  let hookedAtEnd = 0;
+  const runs = 40;
+  for (let i = 0; i < runs; i++) {
+    const random = createRandom(1000 + i);
+    const bowed = shapeStroke(0, 0, 1, 0, 300, 1, pen({ curve: 0.06 }), random);
+    if (bowed.length === 1 && Math.abs(peakAt(bowed[0]) - 0.5) < 0.2) bowedInMiddle++;
+
+    const hooked = shapeStroke(0, 0, 1, 0, 300, 1, pen({ hook: 0.7 }), createRandom(2000 + i));
+    if (hooked.length === 1 && Math.min(peakAt(hooked[0]), 1 - peakAt(hooked[0])) < 0.03) hookedAtEnd++;
+  }
+  check('the bow peaks in the middle of the stroke', bowedInMiddle === runs, `${bowedInMiddle}/${runs}`);
+  check('the hook turns at an end of the stroke', hookedAtEnd === runs, `${hookedAtEnd}/${runs}`);
+
+  const ruled = shapeStroke(0, 0, 1, 0, 300, 1, pen({}), createRandom(7));
+  check('an unshaped stroke is a single straight segment', ruled.length === 1 && ruled[0].length === 6, `${ruled[0]?.length}`);
+  const widths = (path: Float32Array): number[] => {
+    const out: number[] = [];
+    for (let i = 2; i < path.length; i += 3) out.push(path[i]);
+    return out;
+  };
+  const even = shapeStroke(0, 0, 1, 0, 300, 1, pen({ curve: 0.02 }), createRandom(7));
+  check('with no weight variation the line is of one thickness', new Set(widths(even[0]).map((w) => w.toFixed(4))).size === 1);
+
+  const varied = shapeStroke(0, 0, 1, 0, 300, 1, pen({ weightAmount: 0.8, weightScale: 40 }), createRandom(7));
+  const spread = Math.max(...widths(varied[0])) - Math.min(...widths(varied[0]));
+  check('weight variation changes the line thickness as it is drawn', spread > 1, `spread ${spread.toFixed(2)}px`);
+
+  let brokenPieces = 0;
+  let wholePieces = 0;
+  for (let i = 0; i < 30; i++) {
+    brokenPieces += shapeStroke(0, 0, 1, 0, 400, 1, pen({ broken: 0.5, weightScale: 40 }), createRandom(3000 + i)).length;
+    wholePieces += shapeStroke(0, 0, 1, 0, 400, 1, pen({ weightScale: 40 }), createRandom(3000 + i)).length;
+  }
+  check('breaking up lifts the pen mid-stroke', brokenPieces > wholePieces * 1.5, `${brokenPieces} pieces against ${wholePieces}`);
+  check('and an unbroken stroke stays in one piece', wholePieces === 30, `${wholePieces}`);
+
+  let finite = true;
+  for (const piece of shapeStroke(0, 0, 0.6, 0.8, 250, -1, pen({ curve: 0.3, hook: 1, weightAmount: 1, broken: 0.4 }), createRandom(11))) {
+    for (const value of piece) if (!Number.isFinite(value)) finite = false;
+  }
+  check('a stroke with every shaping at once is still finite', finite);
+}
+
+// Each hatching style, not just the default the generator sweep covers.
+{
+  for (const style of ['single', 'cross', 'triple', 'weave']) {
+    const project = generatorProject('hatching', false, 192, { style });
+    const result = equalBytes(renderWhole(project), renderInBands(project, 13));
+    check(`hatching ${style}: 13-row bands match a single tile`, result.equal, `first difference at byte ${result.at}`);
+    check(`hatching ${style}: renders deterministically`, equalBytes(renderWhole(project), renderWhole(project)).equal);
+
+    const seamless = generatorProject('hatching', true, 192, { style });
+    check(
+      `hatching ${style}: 13-row bands match a single tile (seamless)`,
+      equalBytes(renderWhole(seamless), renderInBands(seamless, 13)).equal,
+    );
+    check(`hatching ${style}: puts marks on the page`, inkOf(renderWhole(generatorProject('hatching', false, 384, { style }))) > 200);
+  }
+
+  // Lifting the pen has to take ink off the page, not merely move it about.
+  const solid = inkOf(renderWhole(generatorProject('hatching', false, 384, { style: 'single', broken: 0 })));
+  const dry = inkOf(renderWhole(generatorProject('hatching', false, 384, { style: 'single', broken: 0.6 })));
+  check('breaking up leaves less ink on the page', dry < solid * 0.8, `${dry} against ${solid}`);
+}
+
+// The weave has to read as blocks laid across one another, which means the run
+// of the strokes turning a right angle from each block to the next.
+{
+  const size = 384;
+  const patch = 96;
+  const pixels = renderWhole(generatorProject('hatching', false, size, { style: 'weave', angle: 0, patchSize: patch, spacing: 12, strokeLength: 400, gap: 0 }));
+  const dark = (x: number, y: number): boolean => pixels[(y * size + x) * 4] < 200;
+
+  let checkerboard = true;
+  let blocks = 0;
+  for (let by = 0; by < size / patch; by++) {
+    for (let bx = 0; bx < size / patch; bx++) {
+      let across = 0;
+      let down = 0;
+      for (let y = by * patch + 8; y < (by + 1) * patch - 8; y++) {
+        for (let x = bx * patch + 8; x < (bx + 1) * patch - 8; x++) {
+          if (!dark(x, y)) continue;
+          if (dark(x - 1, y) && dark(x + 1, y)) across++;
+          if (dark(x, y - 1) && dark(x, y + 1)) down++;
+        }
+      }
+      if (across + down < 40) continue;
+      blocks++;
+      // Blocks a knight's move apart share a parity; neighbours do not.
+      if (across > down !== (((bx + by) & 1) === 0)) checkerboard = false;
+    }
+  }
+  check('the weave covers the page in blocks', blocks >= 12, `${blocks} blocks`);
+  check('and the run of the strokes turns from each block to the next', checkerboard);
 }
 
 console.log(`${checks - failures}/${checks} checks passed`);

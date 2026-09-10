@@ -94,7 +94,20 @@ export function parseProject(input: unknown): LoadedProject {
           'so it may render differently',
       );
     }
-    return { id, type, version, params: { ...(asRecord(node.params ?? {}, `nodes[${i}].params`) as ParamMap) } };
+    const params = { ...(asRecord(node.params ?? {}, `nodes[${i}].params`) as ParamMap) };
+
+    // A recipe saved before a control existed has no value for it. Filling it
+    // from the descriptor's default and saying so keeps that recipe openable,
+    // which a hard refusal would not; it is the same trade the version warning
+    // above already makes, and the alternative is a node failing mid-render on
+    // a parameter its author never had the chance to set.
+    for (const param of definition.params) {
+      if (params[param.key] !== undefined) continue;
+      params[param.key] = param.kind === 'ramp' ? param.default.map((stop) => ({ ...stop })) : param.default;
+      warnings.push(`node ${id} (${type}) has no ${param.key}; using this build's default`);
+    }
+
+    return { id, type, version, params };
   });
 
   const byId = new Map(nodes.map((node) => [node.id, node]));

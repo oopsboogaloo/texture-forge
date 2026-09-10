@@ -119,7 +119,7 @@ Twenty-two, chosen so that each does something the others cannot be layered into
 | **Burns** | Scorched holes with charred margins |
 | **Starfield** | Many faint stars, a few bright, with diffraction spikes |
 | **Nebula** | Billowing gas: folded noise pulled into sheets and cavities |
-| **Hatching** | Drawn strokes rather than ruled lines, in crossing families |
+| **Hatching** | Drawn strokes rather than ruled lines: bowed, of uneven weight, hooking where the hand lifts |
 | **Maze** | A perfect maze carved on a torus, so its passages cross the edges |
 
 Several are structurally distinct from the rest and worth calling out.
@@ -134,8 +134,29 @@ cannot reproduce: the bands bend and fold rather than merely getting dirtier.
 that read as filaments, then warps the result. **Maze** carves a perfect maze by
 depth-first search *on a torus*, so its passages run off one edge and arrive at
 the other — a maze generated on a plain grid meets a wall of dead ends at every
-seam. **Hatching** lays down strokes rather than ruled lines: broken, of uneven
-length and weight, each starting and stopping where a hand would lift.
+seam.
+
+**Hatching** models the pen rather than the line. A stroke bows slightly across
+its length, swells and thins as contact varies, tapers where the hand lands and
+lifts, and hooks at the end where the wrist turns — and past a point the pen
+leaves the paper altogether, which is what a dry nib does and what a random gap
+does not. One field drives both the swelling and the breaking, because they are
+one phenomenon: a stroke thins before it skips and comes back thin.
+
+| Control | What it does |
+| ------- | ------------ |
+| Curve | How far the stroke bows across its length |
+| End hook | The extra turn where the hand lifts |
+| Weight scale | How far along the stroke its weight varies |
+| Weight variation | How much of the line's weight that accounts for |
+| Break up | How readily the pen leaves the paper |
+
+Four arrangements: one family of strokes, two crossing, three crossing, and
+**woven blocks** — square blocks whose strokes turn a right angle from one to
+the next, so they read as strips passing over and under one another. The grid
+turns with the angle, so the strokes always run along the block edges; a grid
+left square to the canvas while the strokes ran diagonally would read as a
+pinwheel instead.
 
 Two are edge treatments rather than fills. **Torn Edges** and **Burns** describe
 where the sheet stops, so a tear cannot tile — it says so, and the editor warns

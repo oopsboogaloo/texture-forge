@@ -28,6 +28,14 @@ Three patterns bracket the cost of real presets:
 - **paper** — four octaves of tileable value noise. Representative.
 - **static** — per-pixel white noise. The worst case deflate can be handed.
 
+### Deployment
+
+Pages has to be enabled once by hand: **Settings → Pages → Build and deployment
+→ Source: GitHub Actions**. The workflow cannot do this itself — creating a
+Pages site is not something the workflow token is allowed to do. After that,
+every push to `main` deploys, and the probe is at
+<https://oopsboogaloo.github.io/texture-forge/>.
+
 ### Running it on the iPad
 
 Open the deployed page, pick a size and pattern, and tap **Start export**.

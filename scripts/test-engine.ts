@@ -12,7 +12,7 @@ import { parseProject } from '../src/engine/project.ts';
 import { PRESETS, SQUARE_GRID } from '../src/engine/presets.ts';
 import { checkSeamless, createRenderPass, greyscaleValue, previewScale, renderToPng } from '../src/engine/render.ts';
 import { createMask, fromStack, toStack } from '../src/editor/stack.ts';
-import { describeNodes, getNodeDefinition, listNodeDefinitions } from '../src/engine/registry.ts';
+import { defaultParams, describeNodes, getNodeDefinition, listNodeDefinitions } from '../src/engine/registry.ts';
 import { parseColour } from '../src/engine/colour.ts';
 import { wrapOffsets } from '../src/engine/nodes/scatter.ts';
 import { drawLine } from '../src/engine/raster.ts';
@@ -59,6 +59,46 @@ function clone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
 }
 
+/** A minimal project exercising one generator, the way a thumbnail shows it. */
+function generatorProject(type: string, seamless: boolean, size = 192): Project {
+  const definition = getNodeDefinition(type);
+  const nodes: Project['nodes'] = [{ id: 'g', type, version: definition.version, params: defaultParams(definition) }];
+  const edges: Project['edges'] = [];
+  let tail = 'g';
+
+  if (definition.output === 'mask') {
+    nodes.push({
+      id: 'ramp',
+      type: 'colour-ramp',
+      version: getNodeDefinition('colour-ramp').version,
+      params: {
+        stops: [
+          { position: 0, colour: '#ffffff', alpha: 1 },
+          { position: 1, colour: '#101010', alpha: 1 },
+        ],
+      },
+    });
+    edges.push({ from: 'g', to: 'ramp', input: 'input' });
+    tail = 'ramp';
+  }
+
+  nodes.push({
+    id: 'out',
+    type: 'output',
+    version: getNodeDefinition('output').version,
+    params: { backgroundEnabled: true, backgroundColour: '#ffffff' },
+  });
+  edges.push({ from: tail, to: 'out', input: 'input' });
+
+  return {
+    ...SQUARE_GRID,
+    output: { width: size, height: size, seamless, format: 'rgba' },
+    nodes,
+    edges,
+    outputNode: 'out',
+  };
+}
+
 function sized(project: Project, size: number, patch: Partial<Project['output']> = {}): Project {
   return { ...project, output: { ...project.output, width: size, height: size, ...patch } };
 }
@@ -79,6 +119,40 @@ for (const preset of PRESETS) {
     const banded = renderInBands(project, bandRows);
     const result = equalBytes(whole, banded);
     check(`${preset.id}: ${bandRows}-row bands match a single tile`, result.equal, `first difference at byte ${result.at}`);
+  }
+}
+
+// Every generator, not just the ones a preset happens to use. A generator that
+// is not tile-invariant produces seams at every band boundary of a large export,
+// which is invisible until someone exports at full size.
+{
+  const generators = listNodeDefinitions().filter((definition) => definition.category === 'generator');
+  check('the registry has a useful range of generators', generators.length >= 12, `${generators.length}`);
+
+  for (const definition of generators) {
+    for (const seamless of [false, true]) {
+      const project = generatorProject(definition.type, seamless);
+      const whole = renderWhole(project);
+      const banded = renderInBands(project, 13);
+      const result = equalBytes(whole, banded);
+      check(
+        `${definition.type}: 13-row bands match a single tile${seamless ? ' (seamless)' : ''}`,
+        result.equal,
+        `first difference at byte ${result.at}`,
+      );
+    }
+
+    const project = generatorProject(definition.type, false);
+    check(`${definition.type}: renders deterministically`, equalBytes(renderWhole(project), renderWhole(project)).equal);
+
+    // A generator that paints nothing at its defaults is not usable, and the
+    // failure would otherwise only show up as a blank thumbnail.
+    const pixels = renderWhole(project);
+    let ink = 0;
+    for (let i = 0; i < pixels.length; i += 4) {
+      if (pixels[i] < 245 || pixels[i + 3] < 250) ink++;
+    }
+    check(`${definition.type}: puts marks on the page at its defaults`, ink > 20, `${ink} marked pixels`);
   }
 }
 

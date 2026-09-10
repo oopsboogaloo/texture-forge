@@ -1,6 +1,6 @@
 # Procedural Texture Editor — V1 Specification
 
-Version 1.4. Amends the original V1 spec with decisions taken during review and
+Version 1.5. Amends the original V1 spec with decisions taken during review and
 during implementation; changes are listed under [Amendments](#amendments).
 
 ## Purpose
@@ -243,3 +243,12 @@ Further changes made while implementing the editor:
 | Reset preset | listed | reopening a preset from the picker does this; there is no separate control |
 | Mask | listed as an adjustment | a per-layer mask in the stack, with a generator and Levels of its own — the layer decides where it shows |
 | Preview and format | preview preserves composition, seed and scale | it also follows the output format, since a greyscale export is a different picture rather than a different file type |
+
+Further changes, after the first round of use:
+
+| Area | Before | Now |
+| ---- | ------ | --- |
+| Generators | four | fifteen. Hex and isometric grids, brick, stripes, dots, cells, contours, marble, wood grain, scratches and splatter join the original four. Hex and isometric were listed as later additions; the rest follow from wanting generators that do something layering cannot. |
+| Choosing a generator | a list of names | a gallery of samples, rendered by the engine when shown so they cannot fall out of step with what the generator makes |
+| Presets | title and description | the same, with a sample of the result |
+| Seamless advice | grid only, hard-coded | each node declares its own tiling period, so the advice covers every generator; a layer whose generator cannot wrap says so rather than letting a seam appear at export |

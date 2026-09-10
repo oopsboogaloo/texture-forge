@@ -83,10 +83,12 @@ input[type='color'] {
 .picker { max-width: 720px; margin: 0 auto; padding: 24px 16px 48px; }
 .preset-grid { display: grid; gap: 12px; margin: 24px 0; }
 .preset-card {
-  display: block;
+  display: flex;
+  gap: 16px;
+  align-items: center;
   width: 100%;
   min-height: 0;
-  padding: 18px;
+  padding: 14px;
   text-align: left;
   font-weight: 400;
   border-radius: 14px;
@@ -94,6 +96,37 @@ input[type='color'] {
 .preset-card h2 { color: var(--ink); font-size: 1.05rem; text-transform: none; letter-spacing: 0; margin-bottom: 6px; }
 .preset-card p { color: var(--muted); margin: 0; }
 .picker-actions { display: flex; flex-wrap: wrap; gap: 12px; }
+
+.thumb {
+  display: block;
+  flex: none;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: #ffffff;
+}
+.preset-card .thumb { width: 88px; height: 88px; }
+
+/* A gallery of samples rather than a list of names: what a generator makes is
+   far more use than what it is called. */
+.generator-gallery {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 10px;
+  margin-top: 4px;
+}
+.generator-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: center;
+  padding: 8px;
+  min-height: 0;
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1.2;
+  text-align: center;
+}
+.generator-card .thumb { width: 100%; height: auto; aspect-ratio: 1; }
 
 /* ---------------------------------------------------------------- editor */
 

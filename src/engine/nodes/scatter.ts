@@ -22,22 +22,27 @@ export interface PlacedItem extends ScatterItem {
 
 export class ScatterIndex<T extends ScatterItem> {
   private readonly items: T[];
-  private readonly maxSpan: number;
+  private readonly maxSpan_: number;
 
   constructor(items: T[]) {
     this.items = items.sort((a, b) => a.minY - b.minY);
     let span = 0;
     for (const item of this.items) span = Math.max(span, item.maxY - item.minY);
-    this.maxSpan = span;
+    this.maxSpan_ = span;
   }
 
   get size(): number {
     return this.items.length;
   }
 
+  /** The tallest element, which is how far a row query has to look back. */
+  get maxSpan(): number {
+    return this.maxSpan_;
+  }
+
   /** Calls `visit` for every element that can touch the output-space rows [top, bottom). */
   forEachInRows(top: number, bottom: number, visit: (item: T) => void): void {
-    const from = top - this.maxSpan;
+    const from = top - this.maxSpan_;
     let lo = 0;
     let hi = this.items.length;
     while (lo < hi) {
@@ -59,9 +64,27 @@ export function scatterCount(density: number, outputWidth: number, outputHeight:
 }
 
 /**
+ * Every whole-image shift that brings some part of [min, max] onto the canvas.
+ *
+ * An element is not limited to one shift per axis: a scratch can be longer than
+ * the image, and then the parts more than one canvas away have to come back too,
+ * or the texture does not tile however it is advertised.
+ */
+function spanOffsets(min: number, max: number, size: number): number[] {
+  const first = Math.ceil(-max / size);
+  const last = Math.floor((size - min) / size);
+  const offsets: number[] = [];
+  for (let k = first; k <= last; k++) offsets.push(k * size);
+  // Always include the element where it was generated, even if it lies wholly
+  // outside — the caller filters by tile anyway.
+  if (!offsets.includes(0)) offsets.push(0);
+  return offsets;
+}
+
+/**
  * Offsets at which an element must be redrawn so it wraps at the image edge.
- * Always includes (0,0); in seamless mode it adds the mirrored positions for
- * elements that cross a boundary.
+ * Always includes (0,0); in seamless mode it adds every shift that brings part
+ * of the element back onto the canvas.
  */
 export function wrapOffsets(
   seamless: boolean,
@@ -73,14 +96,10 @@ export function wrapOffsets(
   height: number,
 ): { dx: number; dy: number }[] {
   if (!seamless) return [{ dx: 0, dy: 0 }];
-  const xs = [0];
-  if (minX < 0) xs.push(width);
-  if (maxX > width) xs.push(-width);
-  const ys = [0];
-  if (minY < 0) ys.push(height);
-  if (maxY > height) ys.push(-height);
   const offsets: { dx: number; dy: number }[] = [];
-  for (const dx of xs) for (const dy of ys) offsets.push({ dx, dy });
+  for (const dx of spanOffsets(minX, maxX, width)) {
+    for (const dy of spanOffsets(minY, maxY, height)) offsets.push({ dx, dy });
+  }
   return offsets;
 }
 
@@ -101,7 +120,9 @@ export function forEachPlacement<T extends PlacedItem>(
 ): void {
   const top = ctx.tile.y / ctx.scale;
   const bottom = (ctx.tile.y + ctx.tile.height) / ctx.scale;
-  const reach = ctx.seamless ? ctx.outputHeight : 0;
+  // An element may be shifted by more than one image height, so the row window
+  // has to reach past its own span as well as the image.
+  const reach = ctx.seamless ? ctx.outputHeight + index.maxSpan : 0;
 
   index.forEachInRows(top - reach, bottom + reach, (item) => {
     for (const offset of item.wraps) {

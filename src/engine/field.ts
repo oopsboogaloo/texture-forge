@@ -95,7 +95,12 @@ export class SiteLattice {
    * cell no site outside that neighbourhood can be closer, and the wrapped
    * indices are what make the pattern continue across the image edge.
    */
-  nearest(x: number, y: number, outputWidth: number, outputHeight: number): NearestSites {
+  nearest(px: number, py: number, outputWidth: number, outputHeight: number): NearestSites {
+    // Defined for any coordinate, not only those inside the image: the pattern
+    // is periodic, so a point a whole image away is the same point. That is what
+    // makes it testable as a tiling rather than only as a picture.
+    const x = px - Math.floor(px / outputWidth) * outputWidth;
+    const y = py - Math.floor(py / outputHeight) * outputHeight;
     const baseI = Math.floor(x / this.cellWidth);
     const baseJ = Math.floor(y / this.cellHeight);
     let first = Infinity;

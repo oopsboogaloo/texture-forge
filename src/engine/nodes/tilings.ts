@@ -1,5 +1,6 @@
 import { edgeCoverage, SiteLattice, stripeDistance } from '../field.ts';
 import { drawEllipse } from '../raster.ts';
+import { wrapOffsets } from './scatter.ts';
 import {
   booleanParam,
   numberParam,
@@ -185,7 +186,8 @@ class DotsNode implements NodeInstance {
 
     for (let row = 0; row < rows; row++) {
       const cy = (row + 0.5) * stepY;
-      if (cy + reach < top || cy - reach > bottom) {
+      const wrapReach = ctx.seamless ? ctx.outputHeight : 0;
+      if (cy + reach + wrapReach < top || cy - reach - wrapReach > bottom) {
         // Still advance the stream so the pattern does not depend on the tile.
         for (let column = 0; column < columns; column++) {
           random.next();
@@ -199,15 +201,31 @@ class DotsNode implements NodeInstance {
         const jitterY = (random.next() - 0.5) * 2 * scatter * stepY;
         const size = radius * (1 + (random.next() - 0.5) * 2 * variation);
         const x = (column + 0.5) * stepX + jitterX;
-        drawEllipse(
-          buffer,
-          x * ctx.scale - ctx.tile.x,
-          (cy + jitterY) * ctx.scale - ctx.tile.y,
-          Math.max(0.1, size) * ctx.scale,
-          Math.max(0.1, size) * ctx.scale,
-          0,
-          1,
+        const y = cy + jitterY;
+        const dotRadius = Math.max(0.1, size);
+        // Size variation and scatter can push a dot over an edge; without the
+        // opposite-edge copy the first and last rows come from different dots
+        // and the texture does not meet itself.
+        const offsets = wrapOffsets(
+          ctx.seamless,
+          x - dotRadius,
+          x + dotRadius,
+          y - dotRadius,
+          y + dotRadius,
+          ctx.outputWidth,
+          ctx.outputHeight,
         );
+        for (const offset of offsets) {
+          drawEllipse(
+            buffer,
+            (x + offset.dx) * ctx.scale - ctx.tile.x,
+            (y + offset.dy) * ctx.scale - ctx.tile.y,
+            dotRadius * ctx.scale,
+            dotRadius * ctx.scale,
+            0,
+            1,
+          );
+        }
       }
     }
     return buffer;

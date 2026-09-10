@@ -120,31 +120,46 @@ class SplatterNode implements NodeInstance {
         { x: cx, y: cy, rx: bodyRadius, ry: bodyRadius * random.range(0.7, 1.3), rotation: random.range(0, Math.PI) },
       ];
 
-      let minX = cx - bodyRadius;
-      let maxX = cx + bodyRadius;
-      let minY = cy - bodyRadius;
-      let maxY = cy + bodyRadius;
+      let minX = Infinity;
+      let maxX = -Infinity;
+      let minY = Infinity;
+      let maxY = -Infinity;
 
       for (let s = 0; s < satellites; s++) {
         const angle = random.range(0, Math.PI * 2);
         // Satellites thin out with distance, as thrown droplets do.
         const distance = bodyRadius + random.next() ** 2 * spread;
         const radius = bodyRadius * random.range(0.06, 0.35);
-        const x = cx + Math.cos(angle) * distance;
-        const y = cy + Math.sin(angle) * distance;
-        blobs.push({ x, y, rx: radius, ry: radius * random.range(0.6, 1.4), rotation: angle });
-        minX = Math.min(minX, x - radius);
-        maxX = Math.max(maxX, x + radius);
-        minY = Math.min(minY, y - radius);
-        maxY = Math.max(maxY, y + radius);
+        blobs.push({
+          x: cx + Math.cos(angle) * distance,
+          y: cy + Math.sin(angle) * distance,
+          rx: radius,
+          ry: radius * random.range(0.6, 1.4),
+          rotation: angle,
+        });
+      }
+
+      // Measured from the ellipses that are actually drawn. Taking the body
+      // radius alone understates a blob whose other axis is longer, and a
+      // rotation swings that longer axis onto whichever side it pleases: the
+      // element would then be missing from bands and wrap copies it belongs in.
+      for (const blob of blobs) {
+        const cos = Math.cos(blob.rotation);
+        const sin = Math.sin(blob.rotation);
+        const halfX = Math.hypot(blob.rx * cos, blob.ry * sin) + 1;
+        const halfY = Math.hypot(blob.rx * sin, blob.ry * cos) + 1;
+        minX = Math.min(minX, blob.x - halfX);
+        maxX = Math.max(maxX, blob.x + halfX);
+        minY = Math.min(minY, blob.y - halfY);
+        maxY = Math.max(maxY, blob.y + halfY);
       }
 
       splats.push({
         blobs,
         intensity: random.range(0.7, 1),
-        minY: minY - 1,
-        maxY: maxY + 1,
-        wraps: wrapOffsets(pass.seamless, minX - 1, maxX + 1, minY - 1, maxY + 1, pass.outputWidth, pass.outputHeight),
+        minY,
+        maxY,
+        wraps: wrapOffsets(pass.seamless, minX, maxX, minY, maxY, pass.outputWidth, pass.outputHeight),
       });
     }
     this.index = new ScatterIndex(splats);

@@ -21,7 +21,9 @@ class WarpedBandsNode implements NodeInstance {
   private readonly warp: FractalNoise;
   private readonly detail: FractalNoise;
   private readonly params: ParamMap;
-  private readonly wavelength: number;
+  private readonly cyclesX: number;
+  private readonly cyclesY: number;
+  private readonly warpToCycles: number;
   private readonly shape: 'veins' | 'rings';
 
   constructor(params: ParamMap, nodeId: string, pass: PassInfo, shape: 'veins' | 'rings') {
@@ -41,10 +43,28 @@ class WarpedBandsNode implements NodeInstance {
       octaves: 3,
       seed: seed + 5171,
     });
-    // A whole number of bands across the image, so the pattern wraps.
+    // The bands are carried by a wave with a whole number of cycles across the
+    // image in each direction. A plain rotated ramp is not periodic — shifting
+    // by the image width moves it by width * cos(angle), which is no particular
+    // number of wavelengths — so the warping noise would wrap while the bands it
+    // carries did not, and a texture advertised as seamless would show a seam
+    // wherever the angle was not square. Rounding to whole cycles moves the
+    // angle and spacing by a fraction of a band, which is invisible; a seam is
+    // not.
     const requested = Math.max(4, numberParam(params, 'bandWidth'));
-    const bands = Math.max(1, Math.round(pass.outputWidth / (requested * 2)));
-    this.wavelength = pass.outputWidth / bands;
+    const wavelength = requested * 2;
+    const radians = (numberParam(params, 'angle') * Math.PI) / 180;
+    let cyclesX = Math.round((pass.outputWidth * Math.cos(radians)) / wavelength);
+    let cyclesY = Math.round((pass.outputHeight * Math.sin(radians)) / wavelength);
+    if (cyclesX === 0 && cyclesY === 0) {
+      if (Math.abs(Math.cos(radians)) >= Math.abs(Math.sin(radians))) cyclesX = 1;
+      else cyclesY = 1;
+    }
+    this.cyclesX = cyclesX / pass.outputWidth;
+    this.cyclesY = cyclesY / pass.outputHeight;
+    // Warp displacements are along the band normal, so they are measured in the
+    // same units the carrier counts in.
+    this.warpToCycles = 1 / wavelength;
     this.shape = shape;
   }
 
@@ -53,9 +73,6 @@ class WarpedBandsNode implements NodeInstance {
     const amount = numberParam(this.params, 'warpAmount');
     const grain = numberParam(this.params, 'grain');
     const contrast = numberParam(this.params, 'contrast');
-    const angle = (numberParam(this.params, 'angle') * Math.PI) / 180;
-    const cos = Math.cos(angle);
-    const sin = Math.sin(angle);
     const warpRow = new Float32Array(ctx.tile.width);
     const detailRow = new Float32Array(ctx.tile.width);
     const step = 1 / ctx.scale;
@@ -68,9 +85,11 @@ class WarpedBandsNode implements NodeInstance {
 
       for (let i = 0; i < ctx.tile.width; i++) {
         const x = startX + i * step;
-        const projected = x * cos + y * sin;
-        const displaced = projected + (warpRow[i] - 0.5) * 2 * amount + (detailRow[i] - 0.5) * 2 * grain;
-        const wave = 0.5 + 0.5 * Math.sin((displaced / this.wavelength) * Math.PI * 2);
+        const cycles =
+          x * this.cyclesX +
+          y * this.cyclesY +
+          ((warpRow[i] - 0.5) * 2 * amount + (detailRow[i] - 0.5) * 2 * grain) * this.warpToCycles;
+        const wave = 0.5 + 0.5 * Math.sin(cycles * Math.PI * 2);
         // A plain sine spends half its cycle high, which reads as zebra rather
         // than as stone or timber: both are mostly plain surface with narrow
         // markings across it. Since 1 means "the mark" here, raising the wave to

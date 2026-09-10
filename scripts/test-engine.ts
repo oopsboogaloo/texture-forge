@@ -193,6 +193,41 @@ for (const preset of PRESETS) {
   }
 }
 
+// A bundled preset carrying a stale node version would warn on load, and worse,
+// would mean a node changed behaviour without its version moving — the one thing
+// the version field exists to record.
+{
+  for (const preset of PRESETS) {
+    for (const node of preset.project.nodes) {
+      const current = getNodeDefinition(node.type).version;
+      check(
+        `preset ${preset.id}: ${node.id} is at the current ${node.type} version`,
+        node.version === current,
+        `${node.version} vs ${current}`,
+      );
+    }
+  }
+}
+
+// Controls have to move in the direction they are named. Burns reads its field
+// against a threshold, and getting the sense of that backwards turned the
+// coverage control into its own opposite while still looking plausible.
+{
+  const paperPixels = (coverage: number): number => {
+    const project = generatorProject('burns', false, 192, { coverage });
+    const pixels = renderWhole(project);
+    let paper = 0;
+    // The thumbnail chain paints value 1 dark, so surviving paper is dark here.
+    for (let i = 0; i < pixels.length; i += 4) if (pixels[i] < 128) paper++;
+    return paper;
+  };
+
+  const light = paperPixels(0.25);
+  const heavy = paperPixels(1.1);
+  check('more coverage burns more away', heavy < light, `${heavy} vs ${light} surviving`);
+  check('a low coverage leaves paper behind', light > 0);
+}
+
 // Seamless means the pattern continues across the boundary, which is a stronger
 // claim than "the tiles line up in one render". A generator that is a function
 // of position must give the same answer an image-width away; anything else shows

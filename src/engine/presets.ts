@@ -52,7 +52,7 @@ export const SQUARE_GRID: Project = project(
 export const PAPER: Project = project(
   { width: 4096, height: 4096, seamless: false, format: 'rgba' },
   [
-    { id: 'mottle', type: 'fractal-noise', version: 1, params: { scale: 520, detail: 5, contrast: 1.3, seed: 7 } },
+    { id: 'mottle', type: 'fractal-noise', version: 2, params: { scale: 520, detail: 5, contrast: 1.3, seed: 7 } },
     { id: 'mottle-levels', type: 'levels', version: 1, params: { blackPoint: 0.18, whitePoint: 0.86, gamma: 1, invert: false } },
     {
       id: 'paper-colour',
@@ -110,7 +110,7 @@ export const PAPER: Project = project(
 export const WORN_PRINT: Project = project(
   { width: 4096, height: 4096, seamless: false, format: 'rgba' },
   [
-    { id: 'patches', type: 'fractal-noise', version: 1, params: { scale: 260, detail: 5, contrast: 1.4, seed: 23 } },
+    { id: 'patches', type: 'fractal-noise', version: 2, params: { scale: 260, detail: 5, contrast: 1.4, seed: 23 } },
     { id: 'patch-levels', type: 'levels', version: 1, params: { blackPoint: 0.62, whitePoint: 0.8, gamma: 1, invert: false } },
     {
       id: 'patch-colour',

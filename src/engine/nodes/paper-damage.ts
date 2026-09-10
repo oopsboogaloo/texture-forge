@@ -127,7 +127,10 @@ class BurnsNode implements NodeInstance {
           const distance = Math.min(x, ctx.outputWidth - x, y, ctx.outputHeight - y);
           field += clamp01(distance / reach) * 0.6;
         }
-        buffer.data[j * ctx.tile.width + i] = clamp01((field - (1 - coverage)) / char) * 255;
+        // Paper survives where the field runs above the threshold, so raising
+        // coverage has to raise the threshold: subtracting it from one meant the
+        // control burned less the further it was pushed.
+        buffer.data[j * ctx.tile.width + i] = clamp01((field - coverage) / char) * 255;
       }
     }
     return buffer;
@@ -179,7 +182,7 @@ registerNode({
   seamless: true,
   seamlessPeriod: () => ({ x: null, y: null }),
   params: [
-    { kind: 'number', key: 'coverage', label: 'Coverage', min: 0, max: 1, step: 0.01, default: 0.42 },
+    { kind: 'number', key: 'coverage', label: 'Coverage', min: 0, max: 1.6, step: 0.01, default: 0.58 },
     { kind: 'number', key: 'size', label: 'Burn size', min: 16, max: 4000, step: 1, unit: 'px', default: 700 },
     { kind: 'number', key: 'charSpread', label: 'Char spread', min: 0.01, max: 0.6, step: 0.01, default: 0.12 },
     { kind: 'boolean', key: 'fromEdges', label: 'Start at the edges', default: true },

@@ -1,6 +1,6 @@
 # Procedural Texture Editor — V1 Specification
 
-Version 1.6. Amends the original V1 spec with decisions taken during review and
+Version 1.7. Amends the original V1 spec with decisions taken during review and
 during implementation; changes are listed under [Amendments](#amendments).
 
 ## Purpose
@@ -259,3 +259,10 @@ And again, on request:
 | ---- | ------ | --- |
 | Generators | fifteen | twenty-two. Gravel, Torn Edges, Burns, Starfield, Nebula, Hatching and Maze. Scratches, torn edges, burns, stone and splatter were all listed as later additions; the rest follow the same principle of generators that do something layering cannot. |
 | Noise | smooth only | optionally folded about the midline, which is what turns cloud into filament |
+
+The assistant integration, which the original spec put after V1:
+
+| Area | Before | Now |
+| ---- | ------ | --- |
+| MCP server | out of scope for V1, with the engine built to support it | built. Six tools over stdio: node discovery, presets, recipe validation, an image preview and a full-size render. Recipes composed through it open in the editor and render identically, since it is the same engine. |
+| Dependencies | engine, CLI and web app have none | unchanged; the MCP server is the only part that takes any, so a recipe still renders anywhere |

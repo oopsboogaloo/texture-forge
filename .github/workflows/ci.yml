@@ -16,6 +16,9 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: npm test
+      # Spawns the MCP server and speaks the protocol to it: a broken schema or
+      # a stray write to stdout passes every unit test and fails on connection.
+      - run: npm run test:mcp
 
   browser:
     runs-on: ubuntu-latest

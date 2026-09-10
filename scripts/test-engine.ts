@@ -8,9 +8,16 @@
  */
 import { inflateSync } from 'node:zlib';
 import { FractalNoise } from '../src/engine/noise.ts';
-import { parseProject } from '../src/engine/project.ts';
+import { checkParams, parseProject } from '../src/engine/project.ts';
 import { PRESETS, SQUARE_GRID } from '../src/engine/presets.ts';
-import { checkSeamless, createRenderPass, greyscaleValue, previewScale, renderToPng } from '../src/engine/render.ts';
+import {
+  checkSeamless,
+  createRenderPass,
+  greyscaleValue,
+  previewScale,
+  renderToPng,
+  scaledDimensions,
+} from '../src/engine/render.ts';
 import { createMask, fromStack, toStack } from '../src/editor/stack.ts';
 import { defaultParams, describeNodes, getNodeDefinition, listNodeDefinitions } from '../src/engine/registry.ts';
 import { parseColour } from '../src/engine/colour.ts';
@@ -628,6 +635,100 @@ for (const preset of PRESETS) {
   const view = new DataView(bytes.buffer);
   check('greyscale colour type', bytes[8 + 8 + 9 + 4 + 4] === 0, String(bytes[25]));
   check('greyscale IHDR width', view.getUint32(16) === 64);
+}
+
+// Parameter checking. A recipe that passes this must actually render, so the
+// descriptors have to agree with what the nodes read — and with the recipes
+// this build ships.
+{
+  for (const preset of PRESETS) {
+    const problems = checkParams(preset.project);
+    check(`preset ${preset.id} parameters check out`, problems.length === 0, problems.join('; '));
+  }
+
+  // A descriptor whose own default falls outside its own range would make every
+  // freshly added node invalid, which is the kind of thing only a sweep finds.
+  for (const definition of listNodeDefinitions()) {
+    const project: Project = {
+      ...SQUARE_GRID,
+      nodes: [{ id: 'n', type: definition.type, version: definition.version, params: defaultParams(definition) }],
+      edges: [],
+    };
+    const problems = checkParams(project);
+    check(`${definition.type} defaults check out`, problems.length === 0, problems.join('; '));
+  }
+
+  const paperFibres = getNodeDefinition('paper-fibres');
+  const withParams = (params: Record<string, unknown>): Project => ({
+    ...SQUARE_GRID,
+    nodes: [
+      {
+        id: 'fibres',
+        type: 'paper-fibres',
+        version: paperFibres.version,
+        params: { ...defaultParams(paperFibres), ...params } as Project['nodes'][number]['params'],
+      },
+    ],
+    edges: [],
+  });
+
+  const missing = defaultParams(paperFibres);
+  delete missing.density;
+  const missingProject: Project = {
+    ...SQUARE_GRID,
+    nodes: [{ id: 'fibres', type: 'paper-fibres', version: paperFibres.version, params: missing }],
+    edges: [],
+  };
+  const missingProblems = checkParams(missingProject);
+  check('a missing parameter is reported', missingProblems.length === 1 && missingProblems[0].includes('density'), missingProblems.join('; '));
+
+  const mistyped = checkParams(withParams({ density: 'lots' }));
+  check('a mistyped parameter is reported', mistyped.length === 1 && mistyped[0].includes('must be a number'), mistyped.join('; '));
+
+  // Counts are per megapixel and multiplied by the output area, so a value far
+  // above the published maximum allocates far more than any control could ask
+  // for. This is the check that makes the ranges load-bearing rather than
+  // decorative.
+  const huge = checkParams(withParams({ density: 1e9 }));
+  check('an out-of-range number is reported', huge.length === 1 && huge[0].includes('outside'), huge.join('; '));
+
+  // A parameter dropped in a later node version is drift, not a broken recipe.
+  const stale = checkParams(withParams({ leftoverFromAnOlderVersion: 3 }));
+  check('an unknown parameter is left alone', stale.length === 0, stale.join('; '));
+
+  const rampNode = listNodeDefinitions().find((d) => d.params.some((param) => param.kind === 'ramp'));
+  if (rampNode) {
+    const rampKey = rampNode.params.find((param) => param.kind === 'ramp')!.key;
+    const broken: Project = {
+      ...SQUARE_GRID,
+      nodes: [
+        {
+          id: 'r',
+          type: rampNode.type,
+          version: rampNode.version,
+          params: { ...defaultParams(rampNode), [rampKey]: [] },
+        },
+      ],
+      edges: [],
+    };
+    check('an empty ramp is reported', checkParams(broken).length === 1);
+  }
+}
+
+// The advertised preview size has to be the size actually rendered: the MCP
+// server reports one without building a pass, so the two must not drift.
+{
+  for (const scale of [1, 0.5, 0.37, 1 / 3, 0.05]) {
+    const project = sized(SQUARE_GRID, 777);
+    const pass = createRenderPass(project, { scale });
+    const said = scaledDimensions(project, scale);
+    check(
+      `scaledDimensions agrees with the pass at ${scale}`,
+      said.width === pass.width && said.height === pass.height,
+      `${said.width}x${said.height} vs ${pass.width}x${pass.height}`,
+    );
+  }
+  expectThrows('scaledDimensions rejects a zero scale', () => scaledDimensions(SQUARE_GRID, 0));
 }
 
 console.log(`${checks - failures}/${checks} checks passed`);

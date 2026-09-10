@@ -16,6 +16,20 @@ export interface RenderPass {
 }
 
 /**
+ * The pixel dimensions a pass renders at a given scale.
+ *
+ * Separate from the pass itself so a caller can say how big a preview will be
+ * without paying for the node construction that building one costs.
+ */
+export function scaledDimensions(project: Project, scale: number): { width: number; height: number } {
+  if (!(scale > 0)) throw new Error('scale must be greater than zero');
+  return {
+    width: Math.max(1, Math.round(project.output.width * scale)),
+    height: Math.max(1, Math.round(project.output.height * scale)),
+  };
+}
+
+/**
  * Builds the node instances once, then renders any rectangle of the result.
  *
  * Generators that scatter elements across the whole image do that work in their
@@ -25,10 +39,7 @@ export interface RenderPass {
  */
 export function createRenderPass(project: Project, options: RenderPassOptions = {}): RenderPass {
   const scale = options.scale ?? 1;
-  if (!(scale > 0)) throw new Error('scale must be greater than zero');
-
-  const width = Math.max(1, Math.round(project.output.width * scale));
-  const height = Math.max(1, Math.round(project.output.height * scale));
+  const { width, height } = scaledDimensions(project, scale);
   const order = topologicalOrder(project);
   const pass = {
     outputWidth: project.output.width,

@@ -1,5 +1,5 @@
 import './nodes/index.ts';
-import { getNodeDefinition, type ParamMap } from './registry.ts';
+import { getNodeDefinition, type ParamMap, type ParamValue } from './registry.ts';
 import { APPLICATION_NAME, APPLICATION_VERSION, PROJECT_FORMAT, PROJECT_FORMAT_VERSION } from './version.ts';
 
 export type OutputFormat = 'rgba' | 'luminance' | 'alpha';
@@ -216,4 +216,97 @@ export function stampProvenance(project: Project): Project {
     application: { name: APPLICATION_NAME, version: APPLICATION_VERSION },
     provenance: { generation: 'procedural-algorithms', createdAt: new Date().toISOString() },
   };
+}
+
+/**
+ * Parameter problems that would stop a recipe rendering.
+ *
+ * `parseProject` checks the shape of the graph but copies parameters straight
+ * through, so a missing or mistyped value only surfaces deep inside a node
+ * partway through a render. Checking them against the descriptors the registry
+ * already publishes means a recipe that validates is a recipe that renders.
+ *
+ * The range check earns its place twice over: counts are given per megapixel
+ * and multiplied by the output area, so a value far above the descriptor's
+ * maximum allocates far more than any control could ask for.
+ *
+ * Unknown keys are left alone. A parameter dropped in a later node version is
+ * exactly the kind of drift the version warning is for, and refusing to render
+ * over a leftover key would break old recipes for nothing.
+ */
+export function checkParams(project: Project): string[] {
+  const problems: string[] = [];
+
+  for (const node of project.nodes) {
+    const definition = getNodeDefinition(node.type);
+    for (const param of definition.params) {
+      const value = node.params[param.key];
+      const where = `node ${node.id} (${node.type}) param ${param.key}`;
+
+      if (value === undefined) {
+        problems.push(`${where} is missing`);
+        continue;
+      }
+
+      switch (param.kind) {
+        case 'number':
+          if (typeof value !== 'number' || !Number.isFinite(value)) {
+            problems.push(`${where} must be a number, got ${describeValue(value)}`);
+          } else if (value < param.min || value > param.max) {
+            problems.push(`${where} is ${value}, outside ${param.min} to ${param.max}`);
+          }
+          break;
+        case 'angle':
+        case 'seed':
+          if (typeof value !== 'number' || !Number.isFinite(value)) {
+            problems.push(`${where} must be a number, got ${describeValue(value)}`);
+          }
+          break;
+        case 'colour':
+          if (typeof value !== 'string') problems.push(`${where} must be a colour string, got ${describeValue(value)}`);
+          break;
+        case 'boolean':
+          if (typeof value !== 'boolean') problems.push(`${where} must be true or false, got ${describeValue(value)}`);
+          break;
+        case 'select': {
+          const allowed = param.options.map((option) => option.value);
+          if (typeof value !== 'string' || !allowed.includes(value)) {
+            problems.push(`${where} must be one of ${allowed.join(', ')}, got ${describeValue(value)}`);
+          }
+          break;
+        }
+        case 'ramp':
+          problems.push(...rampProblems(value, where));
+          break;
+      }
+    }
+  }
+
+  return problems;
+}
+
+function rampProblems(value: ParamValue, where: string): string[] {
+  if (!Array.isArray(value) || value.length === 0) return [`${where} must be a non-empty ramp`];
+  const problems: string[] = [];
+  value.forEach((entry, i) => {
+    const stop = entry as unknown as Record<string, unknown>;
+    if (!stop || typeof stop !== 'object') {
+      problems.push(`${where} stop ${i} must be an object`);
+      return;
+    }
+    if (typeof stop.position !== 'number' || !Number.isFinite(stop.position)) {
+      problems.push(`${where} stop ${i} needs a numeric position`);
+    }
+    if (typeof stop.colour !== 'string') problems.push(`${where} stop ${i} needs a colour string`);
+    if (typeof stop.alpha !== 'number' || !Number.isFinite(stop.alpha)) {
+      problems.push(`${where} stop ${i} needs a numeric alpha`);
+    }
+  });
+  return problems;
+}
+
+function describeValue(value: unknown): string {
+  if (value === null) return 'null';
+  if (Array.isArray(value)) return 'an array';
+  return typeof value === 'string' ? JSON.stringify(value) : String(value);
 }

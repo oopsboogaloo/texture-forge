@@ -1,7 +1,7 @@
 # Procedural Texture Editor — V1 Specification
 
-Version 1.1. Amends the original V1 spec with decisions taken during review;
-changes from V1.0 are listed under [Amendments](#amendments).
+Version 1.2. Amends the original V1 spec with decisions taken during review and
+during implementation; changes are listed under [Amendments](#amendments).
 
 ## Purpose
 
@@ -108,6 +108,12 @@ Ports carry one of two types, and the editor refuses mismatched connections:
 - **Colour** — RGBA.
 - **Mask** — single-channel greyscale.
 
+Generators emit masks, with one exception: Grid emits colour, because the spec
+gives it line, heavy-line and background colours of its own and splitting those
+across three ramps would make the commonest texture the fiddliest to set up.
+Everything else becomes visible by way of a Colour Ramp, which is what makes the
+ramp worth having rather than an extra step.
+
 Nodes:
 
 - **Blend:** normal, multiply and screen, with opacity.
@@ -132,21 +138,24 @@ Presets are recipe JSON files, not special-cased code.
 
 - Custom pixel dimensions. Target exports include 8,192 × 8,192 and
   10,000 × 10,000.
-- PNG with optional transparency. sRGB, 8 bits per channel; masks export as
-  8-bit greyscale PNGs rather than RGB.
+- PNG with optional transparency. sRGB, 8 bits per channel.
+- Three output formats: `rgba` for a colour PNG with transparency, and
+  `luminance` or `alpha` for an 8-bit greyscale PNG — luminance where the
+  texture's tone carries the information, alpha where its coverage does. Worn
+  Print reads naturally either way, which is why the choice is explicit rather
+  than inferred.
 - Responsive lower-resolution preview while adjusting controls.
 - Preview and final export preserve composition, seed and texture scale.
 - Export progress, cancellation and useful failure messages.
 - Export runs in a worker; the interface stays responsive throughout.
 - Download the PNG to Files.
 
-**Feasibility gate.** Large-export viability is validated on the target iPad
-before the rendering architecture is committed to. Safari caps a single canvas
-at 16,777,216 pixels of area, so the engine renders in bands and streams
-scanlines into the PNG without allocating a full-size surface. If that proves
-insufficient in practice, the fallback to evaluate is a server-rendered export —
-which the DOM-free engine already makes possible, at the cost of the static-site
-constraint.
+**Feasibility gate — passed.** Validated on the target M2 iPad Pro:
+10,000 x 10,000 transparent PNGs export, save to Files and import into Procreate
+at full size, with the interface responsive throughout. Safari caps a single
+canvas at 16,777,216 pixels of area, so the engine renders in bands and streams
+scanlines into the PNG without allocating a full-size surface. The
+server-rendered fallback is not needed and is out of scope.
 
 ## Seamless mode
 
@@ -214,3 +223,13 @@ Changes from V1.0, following review:
 | Reproducibility | unspecified | output must look the same across environments; identical output is a side effect of the engine owning its rasteriser |
 | Node versions | implied freezing of old behaviour | recipes record versions and the app warns on mismatch; implementations are not frozen |
 | CLI | not mentioned | in V1, as the proof the engine is editor-independent |
+
+Further changes made while implementing V1.1:
+
+| Area | Before | Now |
+| ---- | ------ | --- |
+| Greyscale export | one unspecified "greyscale mask" | explicit `luminance` and `alpha` formats, since Worn Print reads either way |
+| Generator output types | unstated | generators emit masks; Grid alone emits colour |
+| Paper Fibres | density, length, thickness, direction, seed | adds `spread`, without which every fibre is exactly parallel and the result reads as hatching |
+| Presets | "recipe JSON files" | typed modules holding the same structure, so they are checked at build time; `presets <id>` prints one as JSON |
+| Feasibility gate | to be validated | passed on an M2 iPad Pro; server-rendered fallback dropped |

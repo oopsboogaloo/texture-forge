@@ -93,6 +93,41 @@ Two things the interface is careful about, both of which took a bug to learn:
   stale as soon as anything else changes, and writing it back silently reverts
   that change — which is how editing the height used to reset the width.
 
+## Generators
+
+Fifteen, chosen so that each does something the others cannot be layered into:
+
+| | |
+| --- | --- |
+| **Grid** | Square or rectangular cells with optional heavier lines |
+| **Hex Grid** | Hexagonal cells, as the boundaries of a triangular lattice |
+| **Isometric Grid** | Thirty-degree line families, with optional uprights |
+| **Brick** | Courses of offset rectangles |
+| **Stripes** | Parallel lines at any angle, optionally crossed |
+| **Dots** | A regular lattice of dots, with size variation and scatter |
+| **Cells** | Cracked stone, scales and crazing, read as edges, flat cells or distance |
+| **Contours** | Iso-lines through a noise field, with heavier lines at an interval |
+| **Marble** | Bands folded by noise |
+| **Wood Grain** | Hard thin rings drifting along the plank |
+| **Fractal Noise** | Mottling and irregular patches |
+| **Paper Fibres** | Fine directional surface detail |
+| **Scratches** | Long curving marks |
+| **Speckles** | Paper flecks and missing-ink marks |
+| **Splatter** | Thrown ink: a body with droplets around it |
+
+Three of these are structurally distinct from the rest and worth calling out.
+**Cells** builds a wrapping lattice of sites and reads the boundary between the
+two nearest — which is also how Hex Grid is drawn, since a hex grid is the
+boundary diagram of a triangular lattice. **Contours** follows levels of a noise
+field rather than drawing on top of it, so the lines nest and close and their
+spacing reports the steepness beneath them. **Marble** and **Wood Grain** warp
+the coordinates the bands are evaluated at, which is the one thing layering
+cannot reproduce: the bands bend and fold rather than merely getting dirtier.
+
+The picker shows a sample of each, rendered by the engine at the moment it is
+displayed rather than shipped as an image — so a change to a generator's
+defaults changes its thumbnail with it.
+
 ## The engine
 
 The engine is a plain TypeScript library over typed arrays. It has no DOM

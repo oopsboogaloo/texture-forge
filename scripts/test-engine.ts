@@ -12,7 +12,7 @@ import { parseProject } from '../src/engine/project.ts';
 import { PRESETS, SQUARE_GRID } from '../src/engine/presets.ts';
 import { checkSeamless, createRenderPass, greyscaleValue, previewScale, renderToPng } from '../src/engine/render.ts';
 import { createMask, fromStack, toStack } from '../src/editor/stack.ts';
-import { describeNodes, getNodeDefinition, listNodeDefinitions } from '../src/engine/registry.ts';
+import { defaultParams, describeNodes, getNodeDefinition, listNodeDefinitions } from '../src/engine/registry.ts';
 import { parseColour } from '../src/engine/colour.ts';
 import { wrapOffsets } from '../src/engine/nodes/scatter.ts';
 import { drawLine } from '../src/engine/raster.ts';
@@ -59,6 +59,48 @@ function clone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
 }
 
+/** A minimal project exercising one generator, the way a thumbnail shows it. */
+function generatorProject(type: string, seamless: boolean, size = 192, overrides: Record<string, number> = {}): Project {
+  const definition = getNodeDefinition(type);
+  const nodes: Project['nodes'] = [
+    { id: 'g', type, version: definition.version, params: { ...defaultParams(definition), ...overrides } },
+  ];
+  const edges: Project['edges'] = [];
+  let tail = 'g';
+
+  if (definition.output === 'mask') {
+    nodes.push({
+      id: 'ramp',
+      type: 'colour-ramp',
+      version: getNodeDefinition('colour-ramp').version,
+      params: {
+        stops: [
+          { position: 0, colour: '#ffffff', alpha: 1 },
+          { position: 1, colour: '#101010', alpha: 1 },
+        ],
+      },
+    });
+    edges.push({ from: 'g', to: 'ramp', input: 'input' });
+    tail = 'ramp';
+  }
+
+  nodes.push({
+    id: 'out',
+    type: 'output',
+    version: getNodeDefinition('output').version,
+    params: { backgroundEnabled: true, backgroundColour: '#ffffff' },
+  });
+  edges.push({ from: tail, to: 'out', input: 'input' });
+
+  return {
+    ...SQUARE_GRID,
+    output: { width: size, height: size, seamless, format: 'rgba' },
+    nodes,
+    edges,
+    outputNode: 'out',
+  };
+}
+
 function sized(project: Project, size: number, patch: Partial<Project['output']> = {}): Project {
   return { ...project, output: { ...project.output, width: size, height: size, ...patch } };
 }
@@ -80,6 +122,98 @@ for (const preset of PRESETS) {
     const result = equalBytes(whole, banded);
     check(`${preset.id}: ${bandRows}-row bands match a single tile`, result.equal, `first difference at byte ${result.at}`);
   }
+}
+
+// Every generator, not just the ones a preset happens to use. A generator that
+// is not tile-invariant produces seams at every band boundary of a large export,
+// which is invisible until someone exports at full size.
+{
+  const generators = listNodeDefinitions().filter((definition) => definition.category === 'generator');
+  check('the registry has a useful range of generators', generators.length >= 12, `${generators.length}`);
+
+  for (const definition of generators) {
+    for (const seamless of [false, true]) {
+      const project = generatorProject(definition.type, seamless);
+      const whole = renderWhole(project);
+      const banded = renderInBands(project, 13);
+      const result = equalBytes(whole, banded);
+      check(
+        `${definition.type}: 13-row bands match a single tile${seamless ? ' (seamless)' : ''}`,
+        result.equal,
+        `first difference at byte ${result.at}`,
+      );
+    }
+
+    const project = generatorProject(definition.type, false);
+    check(`${definition.type}: renders deterministically`, equalBytes(renderWhole(project), renderWhole(project)).equal);
+
+    // A generator that paints nothing at its defaults is not usable, and the
+    // failure would otherwise only show up as a blank thumbnail.
+    const pixels = renderWhole(project);
+    let ink = 0;
+    for (let i = 0; i < pixels.length; i += 4) {
+      if (pixels[i] < 245 || pixels[i + 3] < 250) ink++;
+    }
+    check(`${definition.type}: puts marks on the page at its defaults`, ink > 20, `${ink} marked pixels`);
+  }
+}
+
+// Scattered generators, with enough elements that a tile boundary is certain to
+// cut through one. At their defaults a small test image holds a single splat,
+// and whether it straddled a band was luck — which is exactly how a bounds bug
+// survives a green suite.
+{
+  const crowded: { type: string; overrides: Record<string, number> }[] = [
+    { type: 'splatter', overrides: { density: 900, size: 40, spread: 120, satellites: 14 } },
+    // No satellites, so the bounds rest entirely on one eccentric rotated
+    // ellipse, and sparse, so missing ink shows. With droplets around it the
+    // body's extent is swallowed by the spread; packed densely the coverage
+    // saturates and a whole missing blob leaves the image unchanged.
+    { type: 'splatter', overrides: { density: 80, size: 60, spread: 0, satellites: 0 } },
+    { type: 'speckles', overrides: { density: 6000, sizeMax: 40 } },
+    { type: 'scratches', overrides: { density: 2000, length: 600 } },
+    { type: 'paper-fibres', overrides: { density: 9000, length: 200 } },
+    { type: 'dots', overrides: { spacingX: 30, spacingY: 30, radius: 14, sizeVariation: 0.8, scatter: 0.4 } },
+  ];
+
+  for (const { type, overrides } of crowded) {
+    for (const seamless of [false, true]) {
+      const project = generatorProject(type, seamless, 256, overrides);
+      const whole = renderWhole(project);
+      const banded = renderInBands(project, 7);
+      const result = equalBytes(whole, banded);
+      check(
+        `${type}: crowded 7-row bands match a single tile${seamless ? ' (seamless)' : ''}`,
+        result.equal,
+        `first difference at byte ${result.at}`,
+      );
+    }
+  }
+}
+
+// Seamless means the pattern continues across the boundary, which is a stronger
+// claim than "the tiles line up in one render". A generator that is a function
+// of position must give the same answer an image-width away; anything else shows
+// a seam once the texture is tiled, however clean a single render looks.
+{
+  const fields = ['fractal-noise', 'cells', 'hex-grid', 'contours', 'marble', 'wood-grain'];
+  for (const type of fields) {
+    const project = generatorProject(type, true, 128);
+    const pass = createRenderPass(project);
+    const origin = pass.renderTile({ x: 0, y: 0, width: 64, height: 64 }).data;
+    const across = pass.renderTile({ x: pass.width, y: 0, width: 64, height: 64 }).data;
+    const down = pass.renderTile({ x: 0, y: pass.height, width: 64, height: 64 }).data;
+    check(`${type}: repeats across the image width`, equalBytes(origin, across).equal, `at byte ${equalBytes(origin, across).at}`);
+    check(`${type}: repeats down the image height`, equalBytes(origin, down).equal, `at byte ${equalBytes(origin, down).at}`);
+  }
+
+  // The same test must fail for a generator that genuinely cannot wrap,
+  // otherwise it is not testing anything.
+  const stripes = generatorProject('stripes', true, 128, { angle: 37, spacing: 23 });
+  const pass = createRenderPass(stripes);
+  const origin = pass.renderTile({ x: 0, y: 0, width: 64, height: 64 }).data;
+  const across = pass.renderTile({ x: pass.width, y: 0, width: 64, height: 64 }).data;
+  check('a generator that cannot wrap does not repeat', !equalBytes(origin, across).equal);
 }
 
 // The same, in seamless mode. This is where wrapped elements are drawn on the
@@ -143,6 +277,23 @@ for (const preset of PRESETS) {
   check('edge-crossing elements wrap', wrapOffsets(true, -5, 5, 10, 20, 100, 100).length === 2);
   check('corner elements wrap twice over', wrapOffsets(true, -5, 5, -5, 5, 100, 100).length === 4);
   check('wrapping is off unless seamless', wrapOffsets(false, -5, 5, -5, 5, 100, 100).length === 1);
+
+  // A scratch can be longer than the image. One copy per axis is not enough:
+  // the parts more than a canvas away have to come back too, or the texture
+  // does not tile however it is advertised. Band tests cannot see this, since a
+  // missing copy is missing from every band alike.
+  {
+    const size = 100;
+    const long = wrapOffsets(true, -260, 40, 10, 20, size, size);
+    const shifts = [...new Set(long.map((offset) => offset.dx))].sort((a, b) => a - b);
+    // Every shift that brings part of [-260, 40] onto [0, 100), and no others.
+    const expected: number[] = [];
+    for (let k = -10; k <= 10; k++) {
+      if (-260 + k * size < size && 40 + k * size > 0) expected.push(k * size);
+    }
+    check('a long element wraps once per span it crosses', shifts.join() === expected.join(), `${shifts.join()} vs ${expected.join()}`);
+    check('a long element gets several copies', shifts.length >= 4, `${shifts.length}`);
+  }
 }
 
 // Blending happens against translucent backdrops, not just opaque ones.

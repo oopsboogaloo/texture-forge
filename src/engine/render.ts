@@ -172,37 +172,30 @@ export interface SeamlessAdvice {
 }
 
 /**
- * Grid exports must contain whole cells, and grids with heavier lines must also
- * align with the major-line interval. Rather than quietly changing the pattern
- * to fit the canvas, the editor offers sizes that fit the pattern.
+ * Sizes a seamless render must use for the pattern to meet itself.
+ *
+ * Each node declares its own period, so this covers every generator rather than
+ * special-casing the grid — and the answer is a list of compatible sizes to
+ * offer, never a silent change to the pattern to make it fit the canvas.
  */
 export function checkSeamless(project: Project): SeamlessAdvice[] {
   if (!project.output.seamless) return [];
   const advice: SeamlessAdvice[] = [];
 
   for (const node of project.nodes) {
-    if (node.type !== 'grid') continue;
-    const cellWidth = Number(node.params.cellWidth);
-    const cellHeight = Number(node.params.cellHeight);
-    const major = node.params.majorEnabled === true;
-    const axes: { axis: 'width' | 'height'; period: number; current: number }[] = [
-      {
-        axis: 'width',
-        period: cellWidth * (major ? Number(node.params.majorEveryX) : 1),
-        current: project.output.width,
-      },
-      {
-        axis: 'height',
-        period: cellHeight * (major ? Number(node.params.majorEveryY) : 1),
-        current: project.output.height,
-      },
+    const definition = getNodeDefinition(node.type);
+    if (!definition.seamlessPeriod) continue;
+    const periods = definition.seamlessPeriod(node.params);
+    const axes: { axis: 'width' | 'height'; period: number | null; current: number }[] = [
+      { axis: 'width', period: periods.x, current: project.output.width },
+      { axis: 'height', period: periods.y, current: project.output.height },
     ];
 
     for (const { axis, period, current } of axes) {
-      if (!Number.isFinite(period) || period <= 0) continue;
+      if (period === null || !Number.isFinite(period) || period <= 0) continue;
       if (Number.isInteger(current / period)) continue;
-      const below = Math.floor(current / period) * period;
-      const above = Math.ceil(current / period) * period;
+      const below = Math.round(Math.floor(current / period) * period);
+      const above = Math.round(Math.ceil(current / period) * period);
       const suggestions = [below, above].filter((value) => value >= period);
       advice.push({ nodeId: node.id, axis, period, current, suggestions });
     }

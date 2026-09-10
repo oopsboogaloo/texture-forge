@@ -7,6 +7,7 @@ import { createControl } from './controls.ts';
 import { RenderClient } from './render-client.ts';
 import { EditorState, forgetRecovered, loadRecovered } from './state.ts';
 import { createLayer, createMask, fromStack, toStack, type StackLayer } from './stack.ts';
+import { generatorThumbnail, projectThumbnail } from './thumbnails.ts';
 
 /** Preview never renders more than this many pixels, whatever the output size. */
 const PREVIEW_PIXEL_BUDGET = 640_000;
@@ -94,8 +95,15 @@ function showPicker(): void {
   for (const preset of PRESETS) {
     const card = element('button', 'preset-card');
     card.type = 'button';
-    card.append(element('h2', undefined, preset.label));
-    card.append(element('p', undefined, preset.summary));
+    const thumb = element('img', 'thumb');
+    // Rendered at twice its display size: these patterns are fine, and on a
+    // retina screen a 1x thumbnail turns hex cells and hatching into grey wash.
+    thumb.src = projectThumbnail(preset.id, preset.project, 176 * 2);
+    thumb.alt = '';
+    const text = element('div');
+    text.append(element('h2', undefined, preset.label));
+    text.append(element('p', undefined, preset.summary));
+    card.append(thumb, text);
     card.addEventListener('click', () => openProject(stampProvenance(clone(preset.project))));
     grid.append(card);
   }
@@ -335,6 +343,16 @@ function paintLayers(): void {
     if (expanded.has(layer.id)) {
       const body = element('div', 'layer-body');
 
+      if (state.project.output.seamless && !getNodeDefinition(layer.generator.type).seamless) {
+        body.append(
+          element(
+            'p',
+            'notice',
+            `${layerTitle(layer)} cannot wrap at the image edge, so this layer will show a seam when the texture is tiled.`,
+          ),
+        );
+      }
+
       if (index > 0) {
         const definition = getNodeDefinition('blend');
         for (const param of definition.params) {
@@ -411,26 +429,27 @@ function paintLayers(): void {
     layerPanel.append(card);
   }
 
-  const add = element('div', 'add-layer');
-  const chooser = element('select');
+  layerPanel.append(element('h3', undefined, 'Add a layer'));
+  const gallery = element('div', 'generator-gallery');
   for (const definition of listNodeDefinitions()) {
     if (definition.category !== 'generator') continue;
-    const option = element('option');
-    option.value = definition.type;
-    option.textContent = definition.label;
-    chooser.append(option);
-  }
-  add.append(chooser);
-  add.append(
-    button('Add layer', 'secondary', () =>
+    const card = element('button', 'generator-card');
+    card.type = 'button';
+    card.title = definition.summary;
+    const thumb = element('img', 'thumb');
+    thumb.src = generatorThumbnail(definition.type, 96 * 2);
+    thumb.alt = '';
+    card.append(thumb, element('span', undefined, definition.label));
+    card.addEventListener('click', () =>
       mutateStack((layers) => {
-        const layer = createLayer(chooser.value, Date.now() % 100000);
+        const layer = createLayer(definition.type, Date.now() % 100000);
         expanded.add(layer.id);
         layers.push(layer);
       }),
-    ),
-  );
-  layerPanel.append(add);
+    );
+    gallery.append(card);
+  }
+  layerPanel.append(gallery);
 }
 
 /* ------------------------------------------------------------------ output */

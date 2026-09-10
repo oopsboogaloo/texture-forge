@@ -119,6 +119,26 @@ try {
   const fields = await page.$$eval('.size-row input', (els) => els.map((el) => el.value));
   check('both dimensions hold', fields[0] === '512' && fields[1] === '384', fields.join('x'));
 
+  // The gallery is only useful if the samples actually rendered: a blank
+  // thumbnail looks like a working picker and tells you nothing.
+  const cards = page.locator('.generator-card');
+  const cardCount = await cards.count();
+  check('the gallery offers a range of generators', cardCount >= 12, `${cardCount}`);
+  const thumbnails = await page.$$eval('.generator-card .thumb', (nodes) =>
+    nodes.map((node) => ({ src: node.src.length, drawn: node.naturalWidth })),
+  );
+  check('every generator has a thumbnail', thumbnails.every((t) => t.src > 1000 && t.drawn > 0), JSON.stringify(thumbnails[0]));
+  const distinct = new Set((await page.$$eval('.generator-card .thumb', (n) => n.map((x) => x.src))).map((s) => s.length));
+  check('the thumbnails are not all the same image', distinct.size > 8, `${distinct.size} distinct`);
+
+  const before = await page.locator('.layer').count();
+  await page.locator('.generator-card', { hasText: 'Contours' }).click();
+  await page.waitForTimeout(2000);
+  check('a gallery card adds that layer', (await page.locator('.layer').count()) === before + 1);
+  check('the new layer is on top', (await page.locator('.layer-name').first().textContent()).includes('Contours'));
+  await page.locator('.layer').first().locator('button', { hasText: 'Delete' }).click();
+  await page.waitForTimeout(1200);
+
   // A mask is part of V1 composition, so it has to be reachable from the stack.
   await page.locator('button', { hasText: 'Add mask' }).first().click();
   await page.waitForTimeout(2000);

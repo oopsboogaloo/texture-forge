@@ -113,6 +113,10 @@ registerNode({
   output: 'colour',
   inputs: [],
   seamless: true,
+  seamlessPeriod: (params) => ({
+    x: Number(params.cellWidth) * (params.majorEnabled === true ? Number(params.majorEveryX) : 1),
+    y: Number(params.cellHeight) * (params.majorEnabled === true ? Number(params.majorEveryY) : 1),
+  }),
   params: [
     { kind: 'number', key: 'cellWidth', label: 'Cell width', min: 2, max: 2000, step: 1, unit: 'px', default: 64 },
     { kind: 'number', key: 'cellHeight', label: 'Cell height', min: 2, max: 2000, step: 1, unit: 'px', default: 64 },

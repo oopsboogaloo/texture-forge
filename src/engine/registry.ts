@@ -51,6 +51,12 @@ export interface NodeDefinition {
   params: ParamDefinition[];
   /** Whether this node can wrap at the image boundary. */
   seamless: boolean;
+  /**
+   * Output dimensions a seamless render must be a multiple of, per axis, or
+   * null on an axis with no constraint. This is what lets the editor offer
+   * compatible sizes for any generator rather than only for the grid.
+   */
+  seamlessPeriod?: (params: ParamMap) => { x: number | null; y: number | null };
   create(params: ParamMap, nodeId: string, pass: PassInfo): NodeInstance;
 }
 

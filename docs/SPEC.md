@@ -1,6 +1,6 @@
 # Procedural Texture Editor — V1 Specification
 
-Version 1.2. Amends the original V1 spec with decisions taken during review and
+Version 1.3. Amends the original V1 spec with decisions taken during review and
 during implementation; changes are listed under [Amendments](#amendments).
 
 ## Purpose
@@ -233,3 +233,11 @@ Further changes made while implementing V1.1:
 | Paper Fibres | density, length, thickness, direction, seed | adds `spread`, without which every fibre is exactly parallel and the result reads as hatching |
 | Presets | "recipe JSON files" | typed modules holding the same structure, so they are checked at build time; `presets <id>` prints one as JSON |
 | Feasibility gate | to be validated | passed on an M2 iPad Pro; server-rendered fallback dropped |
+
+Further changes made while implementing the editor:
+
+| Area | Before | Now |
+| ---- | ------ | --- |
+| Preview zoom | "preview zoom" | Fit and 1:1, with drag-to-pan at 1:1 — the inspector for features finer than a preview pixel |
+| Checkerboard | "transparency checkerboard" | light, low-contrast, and confined to the image, since these textures are dark marks on nothing and a checker that extends past the edge hides where the texture stops |
+| Reset preset | listed | reopening a preset from the picker does this; there is no separate control |

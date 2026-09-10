@@ -16,3 +16,17 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: npm test
+
+  browser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run build
+      # Drives the built editor in a real browser: every bug this has caught so
+      # far involved two interactions overlapping, which no unit test sees.
+      - run: npm run check:browser

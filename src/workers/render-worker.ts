@@ -1,6 +1,6 @@
 /// <reference lib="webworker" />
 import { parseProject, type Project } from '../engine/project.ts';
-import { createRenderPass, renderToPng } from '../engine/render.ts';
+import { createRenderPass, greyscaleValue, renderToPng } from '../engine/render.ts';
 import type { Tile } from '../engine/types.ts';
 
 export interface PreviewRequest {
@@ -51,8 +51,23 @@ self.onmessage = async (event: MessageEvent<ToRenderWorker>) => {
 
   if (message.type === 'preview') {
     try {
-      const pass = createRenderPass(load(message.project), { scale: message.scale });
+      const project = load(message.project);
+      const pass = createRenderPass(project, { scale: message.scale });
       const tile = pass.renderTile(message.tile);
+
+      // A greyscale export is a different picture, not a different file format,
+      // so the preview has to show it — otherwise choosing one leaves the
+      // preview displaying colour that the saved PNG will not contain.
+      const format = project.output.format;
+      if (format !== 'rgba') {
+        for (let i = 0; i < tile.data.length; i += 4) {
+          const value = greyscaleValue(format, tile.data[i], tile.data[i + 1], tile.data[i + 2], tile.data[i + 3]);
+          tile.data[i] = value;
+          tile.data[i + 1] = value;
+          tile.data[i + 2] = value;
+          tile.data[i + 3] = 255;
+        }
+      }
       // The pixels are freshly allocated per tile, so handing the buffer over
       // rather than copying it is safe.
       const pixels = tile.data.buffer as ArrayBuffer;
@@ -60,6 +75,13 @@ self.onmessage = async (event: MessageEvent<ToRenderWorker>) => {
     } catch (error) {
       post({ type: 'error', id: message.id, message: describe(error) });
     }
+    return;
+  }
+
+  if (exporting) {
+    // The controller is single: a second export would make Cancel reach only
+    // one of them while the other kept consuming memory.
+    post({ type: 'error', id: message.id, message: 'an export is already running' });
     return;
   }
 

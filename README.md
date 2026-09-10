@@ -74,10 +74,10 @@ these are a floor rather than a prediction.
 ## The editor
 
 The opening screen offers the three presets. Choosing one opens a preview and a
-stack of layers, each a generator with its own controls, a blend mode and an
-opacity. Layers can be added, reordered and deleted; every control is built from
-the node registry, so a new generator gets a working panel the moment it declares
-its parameters.
+stack of layers, each a generator with its own controls, a blend mode, an
+opacity and an optional mask that decides where it shows. Layers can be added,
+reordered and deleted; every control is built from the node registry, so a new
+generator gets a working panel the moment it declares its parameters.
 
 Composition in V1 is a stack rather than the node view the original spec called
 for. The saved project is still a graph — the stack is a reading of it — so the

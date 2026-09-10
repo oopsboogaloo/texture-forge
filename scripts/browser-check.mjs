@@ -119,8 +119,32 @@ try {
   const fields = await page.$$eval('.size-row input', (els) => els.map((el) => el.value));
   check('both dimensions hold', fields[0] === '512' && fields[1] === '384', fields.join('x'));
 
+  // A mask is part of V1 composition, so it has to be reachable from the stack.
+  await page.locator('button', { hasText: 'Add mask' }).first().click();
+  await page.waitForTimeout(2000);
+  check('a mask can be added to a layer', (await page.locator('button', { hasText: 'Remove mask' }).count()) === 1);
+  check('the mask brings its own controls', (await page.locator('.layer-body .control').count()) > 8);
+
+  // A greyscale export is a different picture, so the preview must show it.
+  await page.locator('.panel', { hasText: 'Output' }).locator('select').selectOption('luminance');
+  await page.waitForTimeout(2500);
+  const greyscale = await page.evaluate(() => {
+    const canvas = document.querySelector('canvas.preview');
+    const data = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data;
+    for (let i = 0; i < data.length; i += 4004) {
+      if (data[i] !== data[i + 1] || data[i + 1] !== data[i + 2] || data[i + 3] !== 255) return false;
+    }
+    return true;
+  });
+  check('a greyscale format previews as greyscale', greyscale);
+  await page.locator('.panel', { hasText: 'Output' }).locator('select').selectOption('rgba');
+  await page.waitForTimeout(1500);
+
   await page.locator('button', { hasText: 'Export PNG' }).click();
+  // Two concurrent exports would share one cancel and double the memory.
+  check('export is blocked while one is running', await page.locator('button', { hasText: 'Export PNG' }).isDisabled());
   await page.waitForSelector('button:has-text("Save PNG")', { timeout: 90000 });
+  check('export becomes available again', await page.locator('button', { hasText: 'Export PNG' }).isEnabled());
   const download = page.waitForEvent('download', { timeout: 30000 });
   await page.locator('button', { hasText: 'Save PNG' }).click();
   const saved = await download;

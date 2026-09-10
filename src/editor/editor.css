@@ -197,6 +197,9 @@ canvas.preview {
 .notice p { margin: 0 0 10px; }
 .chips { display: flex; flex-wrap: wrap; gap: 8px; }
 
+.mask-head { display: flex; gap: 10px; align-items: center; justify-content: space-between; }
+.mask-head h3 { margin-bottom: 8px; }
+
 .add-layer { display: flex; gap: 10px; align-items: center; margin-top: 12px; }
 .add-layer select { flex: 1; }
 

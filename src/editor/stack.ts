@@ -5,17 +5,26 @@ import { defaultParams, getNodeDefinition, type ParamMap } from '../engine/regis
  * The editor presents the graph as a stack of layers.
  *
  * A layer is a generator plus the chain that makes it visible — Levels and a
- * Colour Ramp for a mask generator, nothing for Grid, which emits colour — and
- * the blend that composites it onto everything below. The saved project stays a
- * graph, so the node view deferred out of V1 can be added later without a format
- * change, and so a recipe means the same thing to the engine and to MCP.
+ * Colour Ramp for a mask generator, nothing for Grid, which emits colour — an
+ * optional mask that controls where it shows, and the blend that composites it
+ * onto everything below. The saved project stays a graph, so the node view
+ * deferred out of V1 can be added later without a format change, and so a recipe
+ * means the same thing to the engine and to MCP.
  */
+export interface LayerMask {
+  /** The `mask` adjustment itself. */
+  node: ProjectNode;
+  generator: ProjectNode;
+  levels: ProjectNode | null;
+}
+
 export interface StackLayer {
   /** Stable identity: the generator node's id. */
   id: string;
   generator: ProjectNode;
   levels: ProjectNode | null;
   ramp: ProjectNode | null;
+  mask: LayerMask | null;
   blendMode: string;
   blendOpacity: number;
   /** Preserved so ids survive a round trip and edits stay minimal. */
@@ -34,10 +43,33 @@ function sourceOf(project: Project, nodeId: string, input: string): ProjectNode 
   return project.nodes.find((node) => node.id === edge.from) ?? null;
 }
 
-function readChain(project: Project, terminal: ProjectNode): Omit<StackLayer, 'blendMode' | 'blendOpacity' | 'blendNodeId'> | null {
+type ChainParts = Omit<StackLayer, 'blendMode' | 'blendOpacity' | 'blendNodeId'>;
+
+/** Reads the greyscale side of a mask: a generator with optional Levels. */
+function readMaskChain(project: Project, terminal: ProjectNode, maskNode: ProjectNode): LayerMask | null {
+  let node: ProjectNode | null = terminal;
+  let levels: ProjectNode | null = null;
+  if (node.type === 'levels') {
+    levels = node;
+    node = sourceOf(project, node.id, 'input');
+  }
+  if (!node || getNodeDefinition(node.type).category !== 'generator') return null;
+  return { node: maskNode, generator: node, levels };
+}
+
+function readChain(project: Project, terminal: ProjectNode): ChainParts | null {
   let ramp: ProjectNode | null = null;
   let levels: ProjectNode | null = null;
+  let mask: LayerMask | null = null;
   let node: ProjectNode | null = terminal;
+
+  if (node && node.type === 'mask') {
+    const maskSource = sourceOf(project, node.id, 'mask');
+    if (!maskSource) return null;
+    mask = readMaskChain(project, maskSource, node);
+    if (!mask) return null;
+    node = sourceOf(project, node.id, 'source');
+  }
 
   if (node && node.type === 'colour-ramp') {
     ramp = node;
@@ -48,7 +80,7 @@ function readChain(project: Project, terminal: ProjectNode): Omit<StackLayer, 'b
     node = sourceOf(project, node.id, 'input');
   }
   if (!node || getNodeDefinition(node.type).category !== 'generator') return null;
-  return { id: node.id, generator: node, levels, ramp };
+  return { id: node.id, generator: node, levels, ramp, mask };
 }
 
 /**
@@ -130,6 +162,23 @@ export function fromStack(stack: Stack, output: Project['output'], template: Pro
       tail = id;
     }
 
+    if (layer.mask) {
+      const maskGeneratorId = uniqueId(layer.mask.generator.id, taken);
+      nodes.push({ ...layer.mask.generator, id: maskGeneratorId });
+      let maskTail = maskGeneratorId;
+      if (layer.mask.levels) {
+        const levelsId = uniqueId(layer.mask.levels.id, taken);
+        nodes.push({ ...layer.mask.levels, id: levelsId });
+        edges.push({ from: maskTail, to: levelsId, input: 'input' });
+        maskTail = levelsId;
+      }
+      const maskId = uniqueId(layer.mask.node.id, taken);
+      nodes.push({ ...layer.mask.node, id: maskId });
+      edges.push({ from: tail, to: maskId, input: 'source' });
+      edges.push({ from: maskTail, to: maskId, input: 'mask' });
+      tail = maskId;
+    }
+
     if (index === 0) {
       base = tail;
       return;
@@ -167,7 +216,7 @@ export function createLayer(generatorType: string, seed: number): StackLayer {
   if (definition.params.some((param) => param.kind === 'seed')) generator.params.seed = seed % 10000;
 
   if (definition.output === 'colour') {
-    return { id, generator, levels: null, ramp: null, blendMode: 'normal', blendOpacity: 1, blendNodeId: null };
+    return { id, generator, levels: null, ramp: null, mask: null, blendMode: 'normal', blendOpacity: 1, blendNodeId: null };
   }
 
   return {
@@ -180,8 +229,26 @@ export function createLayer(generatorType: string, seed: number): StackLayer {
         { position: 1, colour: '#2b2b2b', alpha: 1 },
       ],
     }),
+    mask: null,
     blendMode: 'normal',
     blendOpacity: 1,
     blendNodeId: null,
+  };
+}
+
+/**
+ * A mask for a layer: greyscale values deciding where it shows.
+ *
+ * Fractal noise is the default because it is the one generator whose output is
+ * useful as a mask without any setup — patches of visible and hidden.
+ */
+export function createMask(layerId: string, seed: number): LayerMask {
+  const base = `${layerId}-mask`;
+  const generator = node('fractal-noise', `${base}-noise`);
+  generator.params.seed = seed % 10000;
+  return {
+    node: node('mask', base),
+    generator,
+    levels: node('levels', `${base}-levels`),
   };
 }

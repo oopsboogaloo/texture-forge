@@ -10,7 +10,8 @@ import { inflateSync } from 'node:zlib';
 import { FractalNoise } from '../src/engine/noise.ts';
 import { parseProject } from '../src/engine/project.ts';
 import { PRESETS, SQUARE_GRID } from '../src/engine/presets.ts';
-import { checkSeamless, createRenderPass, previewScale, renderToPng } from '../src/engine/render.ts';
+import { checkSeamless, createRenderPass, greyscaleValue, previewScale, renderToPng } from '../src/engine/render.ts';
+import { createMask, fromStack, toStack } from '../src/editor/stack.ts';
 import { describeNodes, getNodeDefinition, listNodeDefinitions } from '../src/engine/registry.ts';
 import { parseColour } from '../src/engine/colour.ts';
 import { wrapOffsets } from '../src/engine/nodes/scatter.ts';
@@ -52,6 +53,10 @@ function renderInBands(project: Project, bandRows: number, scale = 1): Uint8Clam
     out.set(tile.data, y * pass.width * 4);
   }
   return out;
+}
+
+function clone<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T;
 }
 
 function sized(project: Project, size: number, patch: Partial<Project['output']> = {}): Project {
@@ -333,6 +338,51 @@ for (const preset of PRESETS) {
   }
   check('grid is a colour generator', getNodeDefinition('grid').output === 'colour');
   check('fractal noise is a mask generator', getNodeDefinition('fractal-noise').output === 'mask');
+}
+
+// The editor's layer model is DOM-free, so its reading of the graph is testable
+// here rather than only through a browser.
+{
+  const base = toStack(SQUARE_GRID);
+  check('a preset reads as a stack', base !== null);
+
+  if (base) {
+    // A layer with a mask must still read back as one layer, not fall out of the
+    // stack view — and the graph it builds has to satisfy the engine.
+    const masked = clone(base.layers);
+    masked[0].mask = createMask(masked[0].id, 42);
+    const project = fromStack({ layers: masked, output: base.output }, SQUARE_GRID.output, SQUARE_GRID);
+
+    const parsed = parseProject(JSON.parse(JSON.stringify(project)));
+    check('a masked layer builds a valid project', parsed.warnings.length === 0);
+    check('the mask node is in the graph', project.nodes.some((node) => node.type === 'mask'));
+
+    const reread = toStack(parsed.project);
+    check('a masked layer reads back as one layer', reread !== null && reread.layers.length === 1);
+    check('the mask survives the round trip', reread?.layers[0].mask?.generator.type === 'fractal-noise');
+    check('the masked layer keeps its generator', reread?.layers[0].generator.type === 'grid');
+
+    // And it renders: a mask that produced nothing would be worse than an error.
+    const rendered = renderWhole(sized(parsed.project, 96));
+    let opaque = 0;
+    for (let i = 3; i < rendered.length; i += 4) if (rendered[i] > 0) opaque++;
+    check('a masked layer renders something', opaque > 0);
+
+    // Removing the mask returns to the original graph shape.
+    const unmasked = clone(reread?.layers ?? []);
+    unmasked[0].mask = null;
+    const plain = fromStack({ layers: unmasked, output: base.output }, SQUARE_GRID.output, SQUARE_GRID);
+    check('removing a mask removes its nodes', !plain.nodes.some((node) => node.type === 'mask'));
+  }
+}
+
+// Greyscale export formats read tone or coverage, and the preview uses the same
+// mapping so it cannot show something the export will not produce.
+{
+  check('alpha format reads coverage', greyscaleValue('alpha', 10, 20, 30, 128) === 128);
+  check('luminance of opaque white is white', Math.round(greyscaleValue('luminance', 255, 255, 255, 255)) === 255);
+  check('luminance of opaque black is black', Math.round(greyscaleValue('luminance', 0, 0, 0, 255)) === 0);
+  check('luminance of nothing is white', Math.round(greyscaleValue('luminance', 0, 0, 0, 0)) === 255);
 }
 
 // The encoded PNG must decode back to exactly what the graph produced.

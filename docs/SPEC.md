@@ -1,6 +1,6 @@
 # Procedural Texture Editor — V1 Specification
 
-Version 1.3. Amends the original V1 spec with decisions taken during review and
+Version 1.4. Amends the original V1 spec with decisions taken during review and
 during implementation; changes are listed under [Amendments](#amendments).
 
 ## Purpose
@@ -241,3 +241,5 @@ Further changes made while implementing the editor:
 | Preview zoom | "preview zoom" | Fit and 1:1, with drag-to-pan at 1:1 — the inspector for features finer than a preview pixel |
 | Checkerboard | "transparency checkerboard" | light, low-contrast, and confined to the image, since these textures are dark marks on nothing and a checker that extends past the edge hides where the texture stops |
 | Reset preset | listed | reopening a preset from the picker does this; there is no separate control |
+| Mask | listed as an adjustment | a per-layer mask in the stack, with a generator and Levels of its own — the layer decides where it shows |
+| Preview and format | preview preserves composition, seed and scale | it also follows the output format, since a greyscale export is a different picture rather than a different file type |

@@ -6,7 +6,7 @@ import { getNodeDefinition, listNodeDefinitions, type ParamValue } from '../engi
 import { createControl } from './controls.ts';
 import { RenderClient } from './render-client.ts';
 import { EditorState, forgetRecovered, loadRecovered } from './state.ts';
-import { createLayer, fromStack, toStack, type StackLayer } from './stack.ts';
+import { createLayer, createMask, fromStack, toStack, type StackLayer } from './stack.ts';
 
 /** Preview never renders more than this many pixels, whatever the output size. */
 const PREVIEW_PIXEL_BUDGET = 640_000;
@@ -19,6 +19,8 @@ let state: EditorState | null = null;
 let zoom: 'fit' | 'actual' = 'fit';
 let pan = { x: 0, y: 0 };
 let previewTimer: ReturnType<typeof setTimeout> | null = null;
+/** One export at a time: two would share a single cancel and double the memory. */
+let exportRunning = false;
 let previewToken = 0;
 let expanded = new Set<string>();
 
@@ -154,6 +156,7 @@ function openProject(project: Project): void {
 
 /* ------------------------------------------------------------------ editor */
 
+let exportButton: HTMLButtonElement | null = null;
 let previewCanvas: HTMLCanvasElement;
 let previewStatus: HTMLElement;
 let layerPanel: HTMLElement;
@@ -222,7 +225,9 @@ function paintHeader(): void {
   headerBar.append(undo, redo);
 
   headerBar.append(button('Save', 'small', saveProject));
-  headerBar.append(button('Export PNG', 'primary small', startExport));
+  exportButton = button('Export PNG', 'primary small', () => void startExport());
+  exportButton.disabled = exportRunning;
+  headerBar.append(exportButton);
 }
 
 /* ------------------------------------------------------------------ layers */
@@ -359,6 +364,46 @@ function paintLayers(): void {
             }),
           );
         }
+      }
+
+      // A mask decides where the layer shows, using greyscale values from a
+      // generator of its own.
+      if (layer.mask) {
+        const heading = element('div', 'mask-head');
+        heading.append(element('h3', undefined, 'Mask'));
+        heading.append(
+          button('Remove mask', 'small', () =>
+            mutateStack((layers) => {
+              const at = layers.findIndex((candidate) => candidate.id === layer.id);
+              if (at < 0) return;
+              layers[at].mask = null;
+            }),
+          ),
+        );
+        body.append(heading);
+
+        for (const node of [layer.mask.generator, layer.mask.levels]) {
+          if (!node) continue;
+          const definition = getNodeDefinition(node.type);
+          if (node !== layer.mask.generator) body.append(element('h3', undefined, definition.label));
+          for (const param of definition.params) {
+            body.append(
+              createControl(param, node.params[param.key], {
+                onChange: (value, live) => updateNodeParam(node.id, param.key, value, live),
+              }),
+            );
+          }
+        }
+      } else {
+        body.append(
+          button('Add mask', 'secondary', () =>
+            mutateStack((layers) => {
+              const at = layers.findIndex((candidate) => candidate.id === layer.id);
+              if (at < 0) return;
+              layers[at].mask = createMask(layer.id, Date.now() % 100000);
+            }),
+          ),
+        );
       }
       card.append(body);
     }
@@ -601,7 +646,12 @@ function saveProject(): void {
 }
 
 async function startExport(): Promise<void> {
-  if (!state) return;
+  if (!state || exportRunning) return;
+  exportRunning = true;
+  // Disabled here and not through a repaint: a repaint happens a frame later at
+  // the earliest, and waits entirely while a field has focus, which would leave
+  // a live button starting a second export.
+  if (exportButton) exportButton.disabled = true;
   const project = stampProvenance(state.project);
 
   exportBar.hidden = false;
@@ -634,10 +684,16 @@ async function startExport(): Promise<void> {
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') {
       exportBar.hidden = true;
-      return;
+    } else {
+      label.textContent = `Export failed: ${(error as Error).message}`;
+      cancel.textContent = 'Close';
+      cancel.addEventListener('click', () => {
+        exportBar.hidden = true;
+      });
     }
-    label.textContent = `Export failed: ${(error as Error).message}`;
-    cancel.textContent = 'Close';
+  } finally {
+    exportRunning = false;
+    if (exportButton) exportButton.disabled = false;
   }
 }
 

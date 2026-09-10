@@ -81,7 +81,12 @@ function ihdr(width: number, height: number, colourType: ColourType): Uint8Array
  */
 export async function encodePng(req: EncodeRequest): Promise<EncodeResult> {
   const { width, height, colourType, renderBand, onProgress, signal } = req;
-  const bandRows = Math.max(1, Math.min(req.bandRows, height));
+  if (!Number.isInteger(req.bandRows) || req.bandRows < 1) {
+    // A fractional or non-finite band height walks the buffer at fractional
+    // offsets and emits a PNG that is malformed rather than merely wrong.
+    throw new Error(`bandRows must be a positive integer, got ${req.bandRows}`);
+  }
+  const bandRows = Math.min(req.bandRows, height);
   const channels = CHANNELS[colourType];
   const rowStride = 1 + width * channels;
 

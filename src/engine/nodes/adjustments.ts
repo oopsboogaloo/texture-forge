@@ -127,12 +127,16 @@ class BlendNode implements NodeInstance {
       const outAlpha = la + ba * (1 - la);
       if (outAlpha <= 0) continue;
       for (let c = 0; c < 3; c++) {
-        // Blend modes are defined against the backdrop, so where the backdrop is
-        // transparent the layer colour has to stand in for it or multiply would
-        // darken towards black over nothing.
-        const backdrop = ba > 0 ? base.data[i + c] : layer.data[i + c];
-        const blended = mode(backdrop, layer.data[i + c]);
-        const mixed = base.data[i + c] * ba * (1 - la) + blended * la;
+        const source = layer.data[i + c];
+        const backdrop = base.data[i + c];
+        // The compositing formula proper: the source shows through unblended
+        // wherever the backdrop is transparent, is blended where they overlap,
+        // and the backdrop shows through where the source is not. Weighting the
+        // blended colour by the full source alpha instead would drop the first
+        // term, so multiplying a translucent layer over a translucent base lost
+        // the source colour entirely.
+        const mixed =
+          la * (1 - ba) * source + la * ba * mode(backdrop, source) + (1 - la) * ba * backdrop;
         out.data[i + c] = mixed / outAlpha;
       }
       out.data[i + 3] = outAlpha * 255;

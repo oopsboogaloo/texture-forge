@@ -8,6 +8,9 @@ export interface Rgba {
 /** Parses `#rgb`, `#rrggbb` or `#rrggbbaa`. Throws on anything else. */
 export function parseColour(hex: string): Rgba {
   const text = hex.trim().replace(/^#/, '');
+  // Without this, '#gggggg' parses to NaN channels that a clamped buffer turns
+  // into black, quietly altering a texture instead of reporting the bad value.
+  if (!/^[0-9a-fA-F]+$/.test(text)) throw new Error(`not a colour: ${hex}`);
   const expand = (c: string): number => parseInt(c + c, 16);
   if (text.length === 3) {
     return { r: expand(text[0]), g: expand(text[1]), b: expand(text[2]), a: 255 };

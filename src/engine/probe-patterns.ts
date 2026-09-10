@@ -63,12 +63,13 @@ export function createProbeRenderer(spec: ProbeSpec): BandRenderer {
       octaves: 4,
       seed,
     });
+    const row = new Float32Array(width);
     return (buf, y0, rowCount, rowStride, pixelOffset) => {
       for (let r = 0; r < rowCount; r++) {
-        const y = y0 + r;
+        noise.sampleRow(row, y0 + r, 0, 1);
         let p = r * rowStride + pixelOffset;
         for (let x = 0; x < width; x++, p += 4) {
-          const shade = 0.82 + noise.sample(x, y) * 0.28;
+          const shade = 0.82 + row[x] * 0.28;
           buf[p] = Math.min(255, (238 * shade) | 0);
           buf[p + 1] = Math.min(255, (230 * shade) | 0);
           buf[p + 2] = Math.min(255, (212 * shade) | 0);

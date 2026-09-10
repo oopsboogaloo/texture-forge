@@ -107,25 +107,17 @@ export class FractalNoise {
     for (let k = 0; k < count; k++) out[k] *= n;
   }
 
-  /** Samples at an output-space coordinate. Result is in [0,1]. */
+  /**
+   * Samples at a single output-space coordinate.
+   *
+   * Delegates to sampleRow so there is exactly one implementation: two paths
+   * that agree to within a rounding error still disagree, and the difference
+   * shows up as a stray pixel. Not for bulk work — it rebuilds the row tables
+   * on every call.
+   */
   sample(x: number, y: number): number {
-    let sum = 0;
-    for (const { lattice, amplitude } of this.layers) {
-      const { cells, w, h } = lattice;
-      const gx = (x * w) / this.width;
-      const gy = (y * h) / this.height;
-      const ix = Math.floor(gx);
-      const iy = Math.floor(gy);
-      const fx = smoothstep(gx - ix);
-      const fy = smoothstep(gy - iy);
-      const xa = ((ix % w) + w) % w;
-      const xb = (xa + 1) % w;
-      const ya = (((iy % h) + h) % h) * w;
-      const yb = ((((iy % h) + h) % h) + 1) % h * w;
-      const top = cells[ya + xa] + (cells[ya + xb] - cells[ya + xa]) * fx;
-      const bottom = cells[yb + xa] + (cells[yb + xb] - cells[yb + xa]) * fx;
-      sum += (top + (bottom - top) * fy) * amplitude;
-    }
-    return sum * this.norm;
+    const single = new Float32Array(1);
+    this.sampleRow(single, y, x, 1);
+    return single[0];
   }
 }

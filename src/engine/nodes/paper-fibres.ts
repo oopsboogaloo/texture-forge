@@ -2,16 +2,15 @@ import { createRandom } from '../random.ts';
 import { drawLine } from '../raster.ts';
 import { numberParam, registerNode, seedParamValue, type NodeInstance, type ParamMap, type PassInfo } from '../registry.ts';
 import { createMaskBuffer, type PixelBuffer, type RenderContext } from '../types.ts';
-import { ScatterIndex, scatterCount, wrapOffsets, type ScatterItem } from './scatter.ts';
+import { ScatterIndex, forEachPlacement, scatterCount, wrapOffsets, type PlacedItem } from './scatter.ts';
 
-interface Fibre extends ScatterItem {
+interface Fibre extends PlacedItem {
   x0: number;
   y0: number;
   x1: number;
   y1: number;
   thickness: number;
   intensity: number;
-  wraps: { dx: number; dy: number }[];
 }
 
 class PaperFibresNode implements NodeInstance {
@@ -62,32 +61,17 @@ class PaperFibresNode implements NodeInstance {
   render(ctx: RenderContext): PixelBuffer {
     const buffer = createMaskBuffer(ctx.tile.width, ctx.tile.height);
     const scale = ctx.scale;
-    const top = ctx.tile.y / scale;
-    const bottom = (ctx.tile.y + ctx.tile.height) / scale;
-    // Wrapped copies sit a whole image away, so the row window has to cover them.
-    const windows = ctx.seamless
-      ? [
-          { top, bottom },
-          { top: top + ctx.outputHeight, bottom: bottom + ctx.outputHeight },
-          { top: top - ctx.outputHeight, bottom: bottom - ctx.outputHeight },
-        ]
-      : [{ top, bottom }];
-
-    for (const window of windows) {
-      this.index.forEachInRows(window.top, window.bottom, (fibre) => {
-        for (const offset of fibre.wraps) {
-          drawLine(
-            buffer,
-            (fibre.x0 + offset.dx) * scale - ctx.tile.x,
-            (fibre.y0 + offset.dy) * scale - ctx.tile.y,
-            (fibre.x1 + offset.dx) * scale - ctx.tile.x,
-            (fibre.y1 + offset.dy) * scale - ctx.tile.y,
-            fibre.thickness * scale,
-            fibre.intensity,
-          );
-        }
-      });
-    }
+    forEachPlacement(this.index, ctx, (fibre, dx, dy) => {
+      drawLine(
+        buffer,
+        (fibre.x0 + dx) * scale - ctx.tile.x,
+        (fibre.y0 + dy) * scale - ctx.tile.y,
+        (fibre.x1 + dx) * scale - ctx.tile.x,
+        (fibre.y1 + dy) * scale - ctx.tile.y,
+        fibre.thickness * scale,
+        fibre.intensity,
+      );
+    });
     return buffer;
   }
 }

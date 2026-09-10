@@ -86,7 +86,7 @@ export function renderToPng(project: Project, options: ExportOptions = {}): Prom
   const pass = createRenderPass(project, options);
   const format = project.output.format;
   const colourType: ColourType = format === 'rgba' ? 6 : 0;
-  const bandRows = Math.max(1, Math.min(options.bandRows ?? 128, pass.height));
+  const bandRows = Math.min(options.bandRows ?? 128, pass.height);
 
   return encodePng({
     width: pass.width,
@@ -123,10 +123,26 @@ export function renderToPng(project: Project, options: ExportOptions = {}): Prom
   });
 }
 
-/** The largest scale whose rendered area stays within `maxPixels`. */
+/**
+ * The largest scale whose rendered area stays within `maxPixels`.
+ *
+ * The continuous limit is not enough on its own: width and height are rounded
+ * independently, and two round-ups can push the result past a cap that stands
+ * for a real memory or canvas ceiling. The scale is eased down until the
+ * dimensions actually rendered fit.
+ */
 export function previewScale(project: Project, maxPixels: number): number {
-  const area = project.output.width * project.output.height;
-  return area <= maxPixels ? 1 : Math.sqrt(maxPixels / area);
+  const { width, height } = project.output;
+  if (width * height <= maxPixels) return 1;
+
+  let scale = Math.sqrt(maxPixels / (width * height));
+  for (let i = 0; i < 64; i++) {
+    const w = Math.max(1, Math.round(width * scale));
+    const h = Math.max(1, Math.round(height * scale));
+    if (w * h <= maxPixels) return scale;
+    scale *= 0.999;
+  }
+  return scale;
 }
 
 export interface SeamlessAdvice {

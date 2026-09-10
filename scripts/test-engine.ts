@@ -12,9 +12,10 @@ import { parseProject } from '../src/engine/project.ts';
 import { PRESETS, SQUARE_GRID } from '../src/engine/presets.ts';
 import { checkSeamless, createRenderPass, previewScale, renderToPng } from '../src/engine/render.ts';
 import { describeNodes, getNodeDefinition, listNodeDefinitions } from '../src/engine/registry.ts';
+import { parseColour } from '../src/engine/colour.ts';
 import { wrapOffsets } from '../src/engine/nodes/scatter.ts';
 import { drawLine } from '../src/engine/raster.ts';
-import { createMaskBuffer } from '../src/engine/types.ts';
+import { createColourBuffer, createMaskBuffer } from '../src/engine/types.ts';
 import type { Project } from '../src/engine/project.ts';
 
 let failures = 0;
@@ -76,6 +77,24 @@ for (const preset of PRESETS) {
   }
 }
 
+// The same, in seamless mode. This is where wrapped elements are drawn on the
+// far side of the image, and where a tile can be reached by an element whose
+// centre is a whole image away — so it needs its own coverage, not an
+// assumption that the non-seamless case generalises.
+for (const preset of PRESETS) {
+  const project = sized(preset.project, 256, { seamless: true });
+  const whole = renderWhole(project);
+  for (const bandRows of [1, 17, 64, 251]) {
+    const banded = renderInBands(project, bandRows);
+    const result = equalBytes(whole, banded);
+    check(
+      `${preset.id}: seamless ${bandRows}-row bands match a single tile`,
+      result.equal,
+      `first difference at byte ${result.at}`,
+    );
+  }
+}
+
 // The same recipe must produce the same picture every time.
 for (const preset of PRESETS) {
   const project = sized(preset.project, 128);
@@ -89,6 +108,20 @@ for (const preset of PRESETS) {
   check('preview scale sets destination size', pass.width === 128 && pass.height === 128, `${pass.width}x${pass.height}`);
   check('previewScale caps area', Math.abs(previewScale(sized(project, 1000), 250000) - 0.5) < 1e-9);
   check('previewScale leaves small outputs alone', previewScale(sized(project, 100), 250000) === 1);
+
+  // Rounding width and height independently can round both up, so the cap has
+  // to hold for the dimensions actually rendered.
+  for (const [w, h, cap] of [
+    [1024, 5000, 1_000_000],
+    [999, 333, 50_000],
+    [4096, 4096, 262_144],
+    [10000, 10000, 1_000_000],
+  ] as const) {
+    const shaped: Project = { ...project, output: { ...project.output, width: w, height: h } };
+    const scale = previewScale(shaped, cap);
+    const rendered = Math.max(1, Math.round(w * scale)) * Math.max(1, Math.round(h * scale));
+    check(`previewScale respects the cap after rounding for ${w}x${h}`, rendered <= cap, `${rendered} > ${cap}`);
+  }
 }
 
 // Seamless noise wraps exactly at the image boundary.
@@ -105,6 +138,77 @@ for (const preset of PRESETS) {
   check('edge-crossing elements wrap', wrapOffsets(true, -5, 5, 10, 20, 100, 100).length === 2);
   check('corner elements wrap twice over', wrapOffsets(true, -5, 5, -5, 5, 100, 100).length === 4);
   check('wrapping is off unless seamless', wrapOffsets(false, -5, 5, -5, 5, 100, 100).length === 1);
+}
+
+// Blending happens against translucent backdrops, not just opaque ones.
+{
+  const pass = { outputWidth: 4, outputHeight: 1, seamless: false };
+  const ctx = {
+    outputWidth: 4,
+    outputHeight: 1,
+    scale: 1,
+    seamless: false,
+    tile: { x: 0, y: 0, width: 1, height: 1 },
+  };
+  const colour = (r: number, g: number, b: number, a: number) => {
+    const buffer = createColourBuffer(1, 1);
+    buffer.data.set([r, g, b, a]);
+    return buffer;
+  };
+
+  const node = getNodeDefinition('blend').create({ mode: 'multiply', opacity: 1 }, 'blend', pass);
+  const result = node.render(ctx, [colour(255, 0, 0, 128), colour(0, 0, 255, 128)]);
+
+  // Half-alpha blue multiplied over half-alpha red: through the transparent half
+  // of the backdrop the blue is unblended, so it cannot vanish.
+  const ba = 128 / 255;
+  const la = 128 / 255;
+  const outAlpha = la + ba * (1 - la);
+  const expectedBlue = (la * (1 - ba) * 255) / outAlpha;
+  check('blend keeps source colour over a translucent backdrop', result.data[2] > 0, `blue is ${result.data[2]}`);
+  check(
+    'blend matches the compositing formula',
+    Math.abs(result.data[2] - expectedBlue) <= 1,
+    `${result.data[2]} vs ${expectedBlue.toFixed(1)}`,
+  );
+
+  const over = getNodeDefinition('blend').create({ mode: 'normal', opacity: 1 }, 'blend', pass);
+  const opaque = over.render(ctx, [colour(255, 0, 0, 255), colour(0, 0, 255, 255)]);
+  check('normal blend at full alpha is the layer', opaque.data[2] === 255 && opaque.data[0] === 0);
+}
+
+// Band heights are whole scanlines or nothing.
+{
+  const project = sized(SQUARE_GRID, 32);
+  for (const bandRows of [1.5, Number.NaN, 0, -4]) {
+    let threw = false;
+    try {
+      await renderToPng(project, { bandRows });
+    } catch {
+      threw = true;
+    }
+    check(`bandRows ${String(bandRows)} is rejected`, threw);
+  }
+}
+
+// Colours are hexadecimal or an error, never silently mangled.
+{
+  for (const bad of ['#gggggg', '#12345g', '#12', 'rebeccapurple', '']) {
+    expectThrows(`parseColour rejects ${JSON.stringify(bad)}`, () => parseColour(bad));
+  }
+  check('parseColour reads six digits', parseColour('#ff8000').r === 255);
+  check('parseColour reads alpha', parseColour('#ff800080').a === 128);
+  check('parseColour expands shorthand', parseColour('#f80').g === 136);
+}
+
+// Row sampling and point sampling are the same function.
+{
+  const noise = new FractalNoise({ outputWidth: 256, outputHeight: 256, cellPx: 48, octaves: 3, seed: 9 });
+  const row = new Float32Array(16);
+  noise.sampleRow(row, 12.5, 4.5, 2);
+  let worst = 0;
+  for (let k = 0; k < row.length; k++) worst = Math.max(worst, Math.abs(row[k] - noise.sample(4.5 + k * 2, 12.5)));
+  check('sampleRow and sample are the same function', worst === 0, `largest difference ${worst}`);
 }
 
 // The scanline bounds in drawLine are an optimisation over testing every pixel
@@ -206,6 +310,13 @@ for (const preset of PRESETS) {
   });
 
   expectThrows('an unsupported format version is rejected', () => parseProject({ ...valid, formatVersion: 99 }));
+
+  expectThrows('two edges into one input are rejected', () => {
+    const broken = JSON.parse(JSON.stringify(SQUARE_GRID));
+    broken.nodes.push({ id: 'grid2', type: 'grid', version: 1, params: { ...broken.nodes[0].params } });
+    broken.edges.push({ from: 'grid2', to: 'out', input: 'input' });
+    return parseProject(broken);
+  });
 }
 
 // Node descriptors are what the editor and the future MCP server both read.

@@ -2,16 +2,15 @@ import { createRandom } from '../random.ts';
 import { drawEllipse } from '../raster.ts';
 import { numberParam, registerNode, seedParamValue, type NodeInstance, type ParamMap, type PassInfo } from '../registry.ts';
 import { createMaskBuffer, type PixelBuffer, type RenderContext } from '../types.ts';
-import { ScatterIndex, scatterCount, wrapOffsets, type ScatterItem } from './scatter.ts';
+import { ScatterIndex, forEachPlacement, scatterCount, wrapOffsets, type PlacedItem } from './scatter.ts';
 
-interface Speckle extends ScatterItem {
+interface Speckle extends PlacedItem {
   x: number;
   y: number;
   rx: number;
   ry: number;
   rotation: number;
   intensity: number;
-  wraps: { dx: number; dy: number }[];
 }
 
 class SpecklesNode implements NodeInstance {
@@ -53,31 +52,17 @@ class SpecklesNode implements NodeInstance {
   render(ctx: RenderContext): PixelBuffer {
     const buffer = createMaskBuffer(ctx.tile.width, ctx.tile.height);
     const scale = ctx.scale;
-    const top = ctx.tile.y / scale;
-    const bottom = (ctx.tile.y + ctx.tile.height) / scale;
-    const windows = ctx.seamless
-      ? [
-          { top, bottom },
-          { top: top + ctx.outputHeight, bottom: bottom + ctx.outputHeight },
-          { top: top - ctx.outputHeight, bottom: bottom - ctx.outputHeight },
-        ]
-      : [{ top, bottom }];
-
-    for (const window of windows) {
-      this.index.forEachInRows(window.top, window.bottom, (speckle) => {
-        for (const offset of speckle.wraps) {
-          drawEllipse(
-            buffer,
-            (speckle.x + offset.dx) * scale - ctx.tile.x,
-            (speckle.y + offset.dy) * scale - ctx.tile.y,
-            speckle.rx * scale,
-            speckle.ry * scale,
-            speckle.rotation,
-            speckle.intensity,
-          );
-        }
-      });
-    }
+    forEachPlacement(this.index, ctx, (speckle, dx, dy) => {
+      drawEllipse(
+        buffer,
+        (speckle.x + dx) * scale - ctx.tile.x,
+        (speckle.y + dy) * scale - ctx.tile.y,
+        speckle.rx * scale,
+        speckle.ry * scale,
+        speckle.rotation,
+        speckle.intensity,
+      );
+    });
     return buffer;
   }
 }

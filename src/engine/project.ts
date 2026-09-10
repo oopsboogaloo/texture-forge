@@ -118,6 +118,16 @@ export function parseProject(input: unknown): LoadedProject {
     return { from, to, input };
   });
 
+  const connected = new Set<string>();
+  for (const edge of edges) {
+    const port = `${edge.to}.${edge.input}`;
+    // Two edges into one port would leave the renderer picking whichever came
+    // first in the file, so reordering otherwise identical JSON would change
+    // the picture.
+    if (connected.has(port)) fail(`input ${port} has more than one connection`);
+    connected.add(port);
+  }
+
   const outputNode = String(raw.outputNode ?? '');
   const terminal = byId.get(outputNode) ?? fail(`outputNode ${outputNode} does not exist`);
   if (getNodeDefinition(terminal.type).category !== 'output') fail(`outputNode ${outputNode} is not an output node`);

@@ -1,3 +1,5 @@
+import type { RenderContext } from '../types.ts';
+
 /**
  * Scattered elements — fibres, speckles — are generated for the whole image up
  * front, not per tile: a tile only sees part of the picture, and an element
@@ -7,6 +9,15 @@
 export interface ScatterItem {
   minY: number;
   maxY: number;
+}
+
+export interface WrapOffset {
+  dx: number;
+  dy: number;
+}
+
+export interface PlacedItem extends ScatterItem {
+  wraps: WrapOffset[];
 }
 
 export class ScatterIndex<T extends ScatterItem> {
@@ -71,4 +82,31 @@ export function wrapOffsets(
   const offsets: { dx: number; dy: number }[] = [];
   for (const dx of xs) for (const dy of ys) offsets.push({ dx, dy });
   return offsets;
+}
+
+/**
+ * Visits every (element, wrap offset) pair that lands in the tile, exactly once.
+ *
+ * Asking the index separately for each wrapped row window would match a
+ * boundary-crossing element in more than one of them and draw its whole set of
+ * offsets each time. Coverage accumulates, so the element would darken and the
+ * result would depend on band height — the one thing a tiled renderer must
+ * never do. Instead the index is asked once over the widest window that can
+ * reach this tile, and each offset is tested against the tile itself.
+ */
+export function forEachPlacement<T extends PlacedItem>(
+  index: ScatterIndex<T>,
+  ctx: RenderContext,
+  visit: (item: T, dx: number, dy: number) => void,
+): void {
+  const top = ctx.tile.y / ctx.scale;
+  const bottom = (ctx.tile.y + ctx.tile.height) / ctx.scale;
+  const reach = ctx.seamless ? ctx.outputHeight : 0;
+
+  index.forEachInRows(top - reach, bottom + reach, (item) => {
+    for (const offset of item.wraps) {
+      if (item.maxY + offset.dy <= top || item.minY + offset.dy >= bottom) continue;
+      visit(item, offset.dx, offset.dy);
+    }
+  });
 }

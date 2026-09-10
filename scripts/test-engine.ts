@@ -148,8 +148,10 @@ for (const preset of PRESETS) {
     check(`${definition.type}: renders deterministically`, equalBytes(renderWhole(project), renderWhole(project)).equal);
 
     // A generator that paints nothing at its defaults is not usable, and the
-    // failure would otherwise only show up as a blank thumbnail.
-    const pixels = renderWhole(project);
+    // failure would otherwise only show up as a blank thumbnail. Checked on a
+    // canvas large enough for the defaults to mean something: an edge treatment
+    // whose depth exceeds half the image has nothing left to leave behind.
+    const pixels = renderWhole(generatorProject(definition.type, false, 512));
     let ink = 0;
     for (let i = 0; i < pixels.length; i += 4) {
       if (pixels[i] < 245 || pixels[i + 3] < 250) ink++;

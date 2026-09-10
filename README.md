@@ -95,7 +95,7 @@ Two things the interface is careful about, both of which took a bug to learn:
 
 ## Generators
 
-Fifteen, chosen so that each does something the others cannot be layered into:
+Twenty-two, chosen so that each does something the others cannot be layered into:
 
 | | |
 | --- | --- |
@@ -114,8 +114,15 @@ Fifteen, chosen so that each does something the others cannot be layered into:
 | **Scratches** | Long curving marks |
 | **Speckles** | Paper flecks and missing-ink marks |
 | **Splatter** | Thrown ink: a body with droplets around it |
+| **Gravel** | Packed stones with ground between them, each shaded separately |
+| **Torn Edges** | A ragged edge eaten in from the border |
+| **Burns** | Scorched holes with charred margins |
+| **Starfield** | Many faint stars, a few bright, with diffraction spikes |
+| **Nebula** | Billowing gas: folded noise pulled into sheets and cavities |
+| **Hatching** | Drawn strokes rather than ruled lines, in crossing families |
+| **Maze** | A perfect maze carved on a torus, so its passages cross the edges |
 
-Three of these are structurally distinct from the rest and worth calling out.
+Several are structurally distinct from the rest and worth calling out.
 **Cells** builds a wrapping lattice of sites and reads the boundary between the
 two nearest — which is also how Hex Grid is drawn, since a hex grid is the
 boundary diagram of a triangular lattice. **Contours** follows levels of a noise
@@ -123,6 +130,16 @@ field rather than drawing on top of it, so the lines nest and close and their
 spacing reports the steepness beneath them. **Marble** and **Wood Grain** warp
 the coordinates the bands are evaluated at, which is the one thing layering
 cannot reproduce: the bands bend and fold rather than merely getting dirtier.
+**Nebula** folds its noise about the midline before summing, leaving creases
+that read as filaments, then warps the result. **Maze** carves a perfect maze by
+depth-first search *on a torus*, so its passages run off one edge and arrive at
+the other — a maze generated on a plain grid meets a wall of dead ends at every
+seam. **Hatching** lays down strokes rather than ruled lines: broken, of uneven
+length and weight, each starting and stopping where a hand would lift.
+
+Two are edge treatments rather than fills. **Torn Edges** and **Burns** describe
+where the sheet stops, so a tear cannot tile — it says so, and the editor warns
+when a layer that cannot wrap is used in a seamless texture.
 
 The picker shows a sample of each, rendered by the engine at the moment it is
 displayed rather than shipped as an image — so a change to a generator's

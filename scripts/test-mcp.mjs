@@ -103,6 +103,45 @@ try {
   });
   check('an unreasonable size is refused', tooBig.isError === true);
 
+  // Validation has to mean the recipe renders. Parameters live in a plain
+  // object the parser copies through untouched, so a missing or mistyped one
+  // used to validate cleanly and then fail partway into a render.
+  const noDensity = JSON.parse(recipeText);
+  const fibres = noDensity.nodes.find((node) => node.type === 'paper-fibres');
+  delete fibres.params.density;
+  const missingParam = await client.callTool({ name: 'validate_recipe', arguments: { recipe: JSON.stringify(noDensity) } });
+  check('a missing parameter is refused', missingParam.isError === true, textOf(missingParam).slice(0, 90));
+  check('the refusal names the parameter', textOf(missingParam).includes('density'), textOf(missingParam).slice(0, 120));
+
+  const wildDensity = JSON.parse(recipeText);
+  wildDensity.nodes.find((node) => node.type === 'paper-fibres').params.density = 1e9;
+  const outOfRange = await client.callTool({ name: 'preview_texture', arguments: { recipe: JSON.stringify(wildDensity), size: 64 } });
+  check('a count far above its range is refused before rendering', outOfRange.isError === true, textOf(outOfRange).slice(0, 90));
+
+  // Scaling a preview down does not make an oversized recipe cheap: counts are
+  // given per megapixel of the stored size, so the guard has to run here too.
+  const oversized = JSON.parse(recipeText);
+  oversized.output.width = 30000;
+  oversized.output.height = 30000;
+  const hugePreview = await client.callTool({ name: 'preview_texture', arguments: { recipe: JSON.stringify(oversized), size: 64 } });
+  check('an oversized recipe is refused a preview', hugePreview.isError === true, textOf(hugePreview).slice(0, 90));
+
+  // A preview in a different format is a different picture, which defeats the
+  // point of looking at it before committing to the render.
+  const greyscale = JSON.parse(recipeText);
+  greyscale.output.format = 'luminance';
+  const greyPreview = await client.callTool({ name: 'preview_texture', arguments: { recipe: JSON.stringify(greyscale), size: 96 } });
+  const greyImage = greyPreview.content.find((part) => part.type === 'image');
+  const greyBytes = Buffer.from(greyImage?.data ?? '', 'base64');
+  check('a greyscale recipe previews as greyscale', greyBytes[25] === 0, `colour type ${greyBytes[25]}`);
+  check('the preview says which format it is showing', textOf(greyPreview).includes('luminance'), textOf(greyPreview).slice(0, 90));
+
+  const previewDims = textOf(await client.callTool({ name: 'preview_texture', arguments: { preset: 'paper', size: 100 } }));
+  const paperRecipe = JSON.parse(textOf(await client.callTool({ name: 'get_recipe', arguments: { id: 'paper' } })));
+  const longest = Math.max(paperRecipe.output.width, paperRecipe.output.height);
+  const expected = `${Math.max(1, Math.round((paperRecipe.output.width * 100) / longest))} x ${Math.max(1, Math.round((paperRecipe.output.height * 100) / longest))}`;
+  check('the preview reports the size it really rendered', previewDims.includes(`shown at ${expected}`), previewDims.slice(0, 120));
+
   const unknownPreset = await client.callTool({ name: 'get_recipe', arguments: { id: 'not-a-preset' } });
   check('an unknown preset is refused', unknownPreset.isError === true);
 } finally {

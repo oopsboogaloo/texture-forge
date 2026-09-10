@@ -204,9 +204,18 @@ types and version — the authoritative description of what can be built),
 `render_texture`.
 
 `preview_texture` returns the image itself, so a texture can be looked at and
-adjusted before committing to a full-size render; `render_texture` writes a PNG
-to a path you give it and nothing else. Recipes composed this way open in the
-editor and render identically, because it is the same engine either way.
+adjusted before committing to a full-size render — in the recipe's own output
+format, because a preview in a different format is a different picture.
+`render_texture` writes a PNG to a path you give it and nothing else. Recipes
+composed this way open in the editor and render identically, because it is the
+same engine either way.
+
+`validate_recipe` passing means the recipe renders: it checks parameters
+against the descriptors `list_nodes` publishes — missing, wrong kind, or
+outside the published range — as well as the shape of the graph. The range
+check is not fussiness: counts are given per megapixel and multiplied by the
+output area, so a value far above a control's maximum allocates far more than
+the editor could ever ask for.
 
 The MCP server is the only part with third-party dependencies — the engine, the
 CLI and the web app have none, so a recipe still renders anywhere.

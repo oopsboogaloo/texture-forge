@@ -16,9 +16,9 @@ import { resolve } from 'node:path';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
-import { parseProject, stampProvenance, type Project } from '../engine/project.ts';
+import { checkParams, parseProject, stampProvenance, type Project } from '../engine/project.ts';
 import { PRESETS, findPreset } from '../engine/presets.ts';
-import { checkSeamless, createRenderPass, renderToPng } from '../engine/render.ts';
+import { checkSeamless, renderToPng, scaledDimensions } from '../engine/render.ts';
 import { describeNodes, listNodeDefinitions } from '../engine/registry.ts';
 import { APPLICATION_NAME, APPLICATION_VERSION } from '../engine/version.ts';
 
@@ -43,6 +43,18 @@ function failure(message: string) {
  */
 function loadRecipe(input: { recipe?: string; preset?: string }): { project: Project; warnings: string[] } {
   if (input.recipe && input.preset) throw new Error('give either a recipe or a preset, not both');
+  const loaded = parseRecipe(input);
+
+  // Every tool reaches a recipe through here, so checking the parameters at
+  // this one point means a recipe that gets past it renders, rather than
+  // failing partway into a node — or, for a count far above its descriptor's
+  // maximum, allocating far more than any control could ask for.
+  const problems = checkParams(loaded.project);
+  if (problems.length > 0) throw new Error(`the recipe cannot render:\n${problems.map((p) => `- ${p}`).join('\n')}`);
+  return loaded;
+}
+
+function parseRecipe(input: { recipe?: string; preset?: string }): { project: Project; warnings: string[] } {
   if (input.preset) return { project: findPreset(input.preset).project, warnings: [] };
   if (!input.recipe) throw new Error('give a recipe (JSON) or a preset id');
 
@@ -55,12 +67,23 @@ function loadRecipe(input: { recipe?: string; preset?: string }): { project: Pro
   return parseProject(parsed);
 }
 
-function withOutput(project: Project, overrides: { width?: number; height?: number; seamless?: boolean; format?: string }): Project {
-  const width = overrides.width ?? project.output.width;
-  const height = overrides.height ?? project.output.height;
+/**
+ * The size ceiling, checked wherever a recipe is about to be rendered.
+ *
+ * Scaling a preview down does not make an oversized recipe cheap: sizes and
+ * counts are given in output pixels, so a generator still builds its elements
+ * from the stored dimensions however small the picture asked for is.
+ */
+function guardDimensions(width: number, height: number): void {
   if (width > MAX_DIMENSION || height > MAX_DIMENSION) {
     throw new Error(`dimensions above ${MAX_DIMENSION} are refused; ask for a smaller size`);
   }
+}
+
+function withOutput(project: Project, overrides: { width?: number; height?: number; seamless?: boolean; format?: string }): Project {
+  const width = overrides.width ?? project.output.width;
+  const height = overrides.height ?? project.output.height;
+  guardDimensions(width, height);
   return {
     ...project,
     output: {
@@ -130,8 +153,8 @@ server.registerTool(
     title: 'Validate a recipe',
     description:
       'Checks a recipe against the engine without rendering it: unknown nodes, mismatched port types, missing or ' +
-      'duplicated connections, cycles, and node versions that differ from this build. Also reports sizes a seamless ' +
-      'render needs.',
+      'duplicated connections, cycles, parameters that are missing, of the wrong kind or outside their published ' +
+      'range, and node versions that differ from this build. Also reports sizes a seamless render needs.',
     inputSchema: recipeInput,
   },
   async (input) => {
@@ -168,22 +191,23 @@ server.registerTool(
   async (input) => {
     try {
       const { project } = loadRecipe(input);
+      guardDimensions(project.output.width, project.output.height);
       const size = input.size ?? 512;
-      const longest = Math.max(project.output.width, project.output.height);
-      const pass = createRenderPass(project, { scale: size / longest });
-      const tile = pass.renderTile({ x: 0, y: 0, width: pass.width, height: pass.height });
+      const scale = size / Math.max(project.output.width, project.output.height);
+      const shown = scaledDimensions(project, scale);
 
-      // Encoded through the same PNG writer the editor exports with.
-      const png = await renderToPng(
-        { ...project, output: { ...project.output, format: 'rgba' } },
-        { scale: size / longest },
-      );
+      // Encoded through the same PNG writer the editor exports with, in the
+      // format the recipe asks for: a preview in a different format is a
+      // different picture, which defeats the point of looking at it first.
+      const png = await renderToPng(project, { scale });
       const bytes = new Uint8Array(await png.blob.arrayBuffer());
       return {
         content: [
           {
             type: 'text' as const,
-            text: `${project.output.width} x ${project.output.height} shown at ${tile.width} x ${tile.height}.`,
+            text:
+              `${project.output.width} x ${project.output.height} ${project.output.format} ` +
+              `shown at ${shown.width} x ${shown.height}.`,
           },
           { type: 'image' as const, data: Buffer.from(bytes).toString('base64'), mimeType: 'image/png' },
         ],
